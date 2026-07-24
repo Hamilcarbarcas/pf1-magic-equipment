@@ -1,0 +1,56 @@
+{
+  "id": "pf1-magic-equipment",
+  "title": "PF1 Magic Equipment",
+  "description": "A backbone for applying magic properties to Pathfinder 1e weapons (and later armor): enhancement bonus, special abilities, and special materials, with automatic recomputation of value, weight, hp, hardness, and masterwork, plus runtime injection of ability effects.",
+  "authors": [
+    {
+      "name": "Hamilcarbarcas",
+      "flags": {}
+    }
+  ],
+  "version": "0.0.0",
+  "compatibility": {
+    "minimum": "13",
+    "verified": "13"
+  },
+  "relationships": {
+    "systems": [
+      {
+        "id": "pf1",
+        "type": "system"
+      }
+    ],
+    "requires": [
+      {
+        "id": "lib-wrapper",
+        "type": "module",
+        "reason": "Used to wrap PF1's ActionUse methods safely (footnotes, conditional-toggle capture) so the mod coexists with other modules that wrap the same methods."
+      }
+    ],
+    "recommends": [
+      {
+        "id": "ckl-roll-bonuses",
+        "type": "module",
+        "reason": "Optional integration: grant magic-equipment abilities to targeted weapons via roll-bonuses' targeting (e.g. a buff that temporarily makes a weapon axiomatic). The mod is fully functional without it."
+      }
+    ]
+  },
+  "esmodules": [
+    "src/scripts/magic-equipment.mjs"
+  ],
+  "styles": [
+    "src/styles/magic-equipment.css"
+  ],
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    }
+  ],
+  "url": "https://github.com/Hamilcarbarcas/pf1-magic-equipment",
+  "readme": "https://github.com/Hamilcarbarcas/pf1-magic-equipment/blob/main/README.md",
+  "bugs": "https://github.com/Hamilcarbarcas/pf1-magic-equipment/issues",
+  "manifest": "https://github.com/Hamilcarbarcas/pf1-magic-equipment/releases/latest/download/module.json",
+  "download": "https://github.com/Hamilcarbarcas/pf1-magic-equipment/releases/download/v1.0.0/module.zip"
+}
