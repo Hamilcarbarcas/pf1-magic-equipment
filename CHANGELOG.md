@@ -78,6 +78,10 @@
 - Injected damage is now **labelled** with its source (e.g. `1d6[Flaming]`), and
   otherwise-untyped added damage (Merciful's 1d6, alignment dice) matches the
   weapon's own damage type.
+- Same-type injected damage (Merciful, Holy/Unholy/Anarchic/Axiomatic, Bane) is now
+  folded into the weapon's **base damage instance** as a modifier rather than shown as
+  a separate same-type line — added only to the non-critical roll, so it still isn't
+  multiplied on a crit.
 - **libWrapper is now a required dependency.** The mod's hooks into PF1's attack
   pipeline are registered through libWrapper so it coexists with other modules that
   wrap the same methods. This fixes Merciful's "deal lethal" toggle having no effect

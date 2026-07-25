@@ -165,6 +165,15 @@ export function onPreDamageRoll(action, rollData, parts) {
       } else {
         // Energy-style (default): added once, on the non-crit roll, not multiplied.
         if (isCrit) continue;
+        if (c.inheritType && parts[0]) {
+          // Same damage type as the weapon (e.g. Merciful, Holy, Bane): fold into the
+          // base damage instance as a modifier (parts[0].extra) instead of a separate
+          // same-type line. It's added only on the normal roll — never the crit-bonus
+          // roll — so it isn't multiplied, and it shares parts[0]'s damageType (plus
+          // any augment like Merciful's nonlethal, applied below).
+          (parts[0].extra ??= []).push(formula);
+          continue;
+        }
         part.type = 'nonCrit';
       }
       parts.push(part);
