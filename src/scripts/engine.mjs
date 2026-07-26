@@ -12,6 +12,10 @@ import { getAppliedAbilities } from './item-config.mjs';
 import { getHandler } from './ability-handlers.mjs';
 import { getAbility } from './data.mjs';
 import { getSingleTargetActor } from './conditions.mjs';
+import {
+  collectBypass, hasBypass, writeSnapshot, bypassFootnotes, clearBypassGrants,
+  patchApplyDamage as installApplyDamagePatches,
+} from './bypass.mjs';
 
 /* --------------------------------------------------------------------------
  * Transient ability grants — abilities handed to an action for the duration of a
@@ -40,6 +44,7 @@ const INJECTED_CONDITIONALS = new Map();
 export function clearGrants(action) {
   if (!action) return;
   GRANTS.delete(action);
+  clearBypassGrants(action);
   ENABLED_CONDITIONALS.delete(action);
   const injected = INJECTED_CONDITIONALS.get(action);
   if (injected) {
@@ -99,6 +104,40 @@ function grantedAbilities(action) {
 /** Item's persisted abilities plus any transient grants for this action's use. */
 function activeAbilities(item, action) {
   return [...getAppliedAbilities(item), ...grantedAbilities(action)];
+}
+
+/**
+ * The DR bypass this use grants (see bypass.mjs).
+ *
+ * Only *granted* abilities are consulted: an ability applied to the weapon has
+ * already had its alignment written to `action.alignments` at Apply, which the system
+ * reads natively — re-adding it here would only duplicate the footnote. Grants have
+ * no such write, which is exactly the gap.
+ *
+ * Deliberately not weapon-gated: a roll-bonuses bypass grant must also cover unarmed
+ * strikes and natural attacks (Smite Evil applies to those), which are `attack` items.
+ * @param {ItemPF} item
+ * @param {object} action
+ */
+function bypassForUse(item, action) {
+  return collectBypass(grantedAbilities(action), {
+    item, action, actor: item?.actor, target: getSingleTargetActor(),
+  });
+}
+
+/**
+ * `pf1PreDisplayActionUse(actionUse)` — the last hook before the chat message is
+ * created. Snapshot the use's DR bypass onto the outgoing message, so apply-damage
+ * still sees it if the granting buff has ended by the time the GM applies damage.
+ */
+export function onPreDisplayActionUse(actionUse) {
+  const bypass = bypassForUse(actionUse?.item, actionUse?.action);
+  if (hasBypass(bypass)) writeSnapshot(actionUse?.shared?.chatData, bypass);
+}
+
+/** Install the apply-damage wrappers that consume that snapshot. Call once at setup. */
+export function patchApplyDamage() {
+  installApplyDamagePatches(registerWrapper);
 }
 
 /**
@@ -319,6 +358,21 @@ function appendFootnotes(actionUse) {
 }
 
 /**
+ * Append a footnote describing what this attack bypasses ("Counts as cold iron, good
+ * for damage reduction"), so the players see the effect the GM's apply-damage dialog
+ * will act on. Not weapon-gated, for the same reason `bypassForUse` isn't.
+ * @param {object} actionUse the in-flight ActionUse.
+ */
+function appendBypassFootnotes(actionUse) {
+  const footnotes = actionUse?.shared?.templateData?.footnotes;
+  if (!Array.isArray(footnotes)) return;
+
+  for (const text of bypassFootnotes(bypassForUse(actionUse.item, actionUse.action))) {
+    footnotes.push({ text });
+  }
+}
+
+/**
  * Append the effect-note enrichers (e.g. @Condition[…], @Bleed[…]) of *granted*
  * abilities to a ChatAttack, then re-enrich. Applied abilities have these written to
  * the action at Apply (so PF1 already picks them up); grants don't, so we add them
@@ -420,6 +474,7 @@ export function patchActionUse() {
     const result = await wrapped(...args);
     try {
       appendFootnotes(this);
+      appendBypassFootnotes(this);
     } catch (err) {
       console.error('pf1-magic-equipment | footnote injection failed', err);
     }

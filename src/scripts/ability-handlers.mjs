@@ -17,6 +17,10 @@
 //     such damage is excluded from the static combat-tab column.
 //   footnote(ctx) = a note to show on the card (e.g. a conditional ability that did
 //     NOT apply this use). Returning null adds nothing.
+//   bypass(ctx) = damage-reduction properties the attack counts as having, as
+//     { materials?: string[], magic?: bool, ignoreAll?: bool, ignoreGeneric?: bool }
+//     (see bypass.mjs). Only consulted for abilities GRANTED for a single use;
+//     abilities applied to the weapon get this natively from Apply.
 //
 // This is intentionally small for now (damage-on-hit only). Attack mods,
 // effective-enh, crit effects, and actor-facing bonuses plug in as additional
@@ -85,7 +89,7 @@ function critRider(key, typeId, formula = '1d8') {
  * @param {(a: object) => boolean} qualifies  predicate over parsed alignment
  * @param {string} vs  label fragment, e.g. "vs evil creatures"
  */
-function alignmentWeapon(key, qualifies, vs) {
+function alignmentWeapon(key, qualifies, vs, axis) {
   const applies = (ctx) => {
     const a = ctx.target ? alignmentOf(ctx.target) : null;
     return !!(a && qualifies(a));
@@ -95,6 +99,10 @@ function alignmentWeapon(key, qualifies, vs) {
     conditional: true,
     damage: (ctx) => (applies(ctx) ? [{ formula: '2d6', inheritType: true, nonCrit: true }] : []),
     footnote: (ctx) => (applies(ctx) ? null : `${key} — +2d6 ${vs} (no verified target)`),
+    // The weapon *is* aligned regardless of what it swings at, so the DR bypass is
+    // unconditional (unlike the 2d6). Only consulted for granted abilities — Apply
+    // writes `action.alignments` for abilities on the weapon itself.
+    bypass: () => ({ materials: [axis] }),
   };
 }
 
@@ -321,10 +329,10 @@ const BUILTINS = [
   energyBurst('ShockingBurst', 'electric'),
   energyBurst('CorrosiveBurst', 'acid'),
   critRider('Thundering', 'sonic'),
-  alignmentWeapon('Holy', (a) => a.evil, 'vs evil creatures'),
-  alignmentWeapon('Unholy', (a) => a.good, 'vs good creatures'),
-  alignmentWeapon('Anarchic', (a) => a.lawful, 'vs lawful creatures'),
-  alignmentWeapon('Axiomatic', (a) => a.chaotic, 'vs chaotic creatures'),
+  alignmentWeapon('Holy', (a) => a.evil, 'vs evil creatures', 'good'),
+  alignmentWeapon('Unholy', (a) => a.good, 'vs good creatures', 'evil'),
+  alignmentWeapon('Anarchic', (a) => a.lawful, 'vs lawful creatures', 'chaotic'),
+  alignmentWeapon('Axiomatic', (a) => a.chaotic, 'vs chaotic creatures', 'lawful'),
   ...ConditionOnHit,
 ];
 

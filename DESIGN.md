@@ -213,6 +213,58 @@ Its integration has two distinct roles:
   keeping this mod standalone, avoiding coupling to roll-bonuses' churning API, and
   avoiding its separate flag namespace fighting our config→Apply model.
 
+## 7b. Damage-reduction bypass (`bypass.mjs`)
+
+PF1 resolves DR when damage is **applied**, not when it is rolled: `ApplyDamage`
+unions `this.materials` / `this.isMagic` into every damage instance's types and
+matches them against the defender's DR entries (`_isReducedBy`). So "grant a bypass"
+means "add ids to that Set" — an attacker-side concern with no counterpart in the
+damage engine, hence its own module.
+
+`DR/—` has no types and always reduces, so the only way through it is to deactivate
+the reduction entry (`_processReductions` skips inactive entries). That is what Smite
+Evil needs; Nevela's suite performs the same mutation for its item-flag bypass, so
+the two compose.
+
+**Descriptor.** `{ materials[], magic, ignoreAll, ignoreGeneric, sources[] }`.
+`magic` is folded out of the material list because the dialog displays it separately;
+a material's `treatedAs` alias is added alongside it, as the system does for real
+materials.
+
+**Sources.** (a) roll-bonuses **DR Bypass** bonus — a checkbox list built from
+`pf1.registry.materials` (`dr && !treatedAs`) plus `pf1.config.damageResistances`,
+plus the two ignore toggles; (b) an ability handler's `bypass(ctx)`, consulted for
+*granted* abilities only — an applied ability already had its alignment written to
+`action.alignments` at Apply, which the system reads natively.
+
+Deliberately **not** weapon-gated: Smite Evil applies to unarmed strikes and natural
+attacks, which are `attack`-type items.
+
+**Snapshot, not live lookup.** The descriptor is stamped onto the outgoing chat
+message at `pf1PreDisplayActionUse` (the last hook before `ChatMessage.create`) with a
+*dotted* flag key — assigning a nested `flags` object there would clobber PF1's own
+`flags.core.canPopout`. Apply-damage reads it back from the message, so the bypass
+survives the granting buff ending between the roll and the GM applying damage. This
+is also what the system's own TODO in `apply-damage.mjs` asks for.
+
+**Three apply-time seams**, all additive libWrapper WRAPPERs:
+
+| seam | does |
+| --- | --- |
+| `_evaluateAttack` | add type tags while the app is still choosing DR defaults |
+| `_prepareTargets` | deactivate ignored DR entries (targets exist by then), then refresh |
+| `_getTargetDamageOptions` | re-assert both, idempotently, right before the reduction is handed off |
+
+The third exists because Nevela's suite constructs a real `ApplyDamage` for its
+headless auto-apply and then **rebuilds** the app's state: `applyLegacyPriorityTypes`
+clears `materials`/`isMagic` and regenerates `target.dr` whenever its damage-type
+priority list is configured (it no-ops when that list is empty). Re-asserting at the
+hand-off point makes the feature independent of that.
+
+**Known boundary:** DR is only calculated in the apply-damage dialog. Damage applied
+without it (shift-click; `pf1.skipConfirmPrompt`) has no DR applied at all, so there
+is nothing to bypass.
+
 ## 8. Cost readout
 
 Live and **fully inclusive** — the total value the item will have once applied —

@@ -95,3 +95,16 @@
 /* Apply */
 .pf1me-section .pf1me-actions { display: flex; justify-content: flex-end; }
 .pf1me-section .pf1me-apply { flex: 0 0 auto; padding: 0.25rem 0.9rem; cursor: pointer; }
+
+/* DR bypass picker (roll-bonuses bonus input) */
+.pf1me-section .pf1me-bypass-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+  gap: 0.1rem 0.5rem;
+  margin-bottom: 0.3rem;
+}
+.pf1me-section .pf1me-bypass-option {
+  display: flex; align-items: center; gap: 0.2rem;
+  font-size: 0.85rem; font-weight: normal; white-space: nowrap;
+}
+.pf1me-section .pf1me-bypass-option input { flex: 0 0 auto; margin: 0; }

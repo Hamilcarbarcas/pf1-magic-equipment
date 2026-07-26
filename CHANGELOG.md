@@ -90,13 +90,26 @@
 - Abilities granted through the **roll-bonuses** integration now also reproduce the
   use-time effects that on-item abilities get at Apply: **Merciful's "deal lethal"
   toggle** (injected onto the action for the use) and **condition-on-hit enrichers**
-  (@Condition / @Bleed) on the attack's effect notes. (Alignment-based DR bypass and
-  actor-facing "while equipped" bonuses still require applying the ability to the item.)
+  (@Condition / @Bleed) on the attack's effect notes. (Actor-facing "while equipped"
+  bonuses still require applying the ability to the item.)
+- **Damage reduction bypass.** A new roll-bonuses bonus type, **DR Bypass**, lets a
+  buff make attacks count as magic, epic, cold iron, silver, adamantine, or an
+  alignment when the target's DR is checked — or ignore damage reduction outright
+  (Smite Evil), or just DR/—. It isn't weapon-specific, so it covers unarmed strikes
+  and natural attacks, and roll-bonuses' targeting decides which attacks it applies to.
+  The bypass is snapshotted onto the attack's chat message, so it still applies if the
+  granting buff ends before the GM applies damage, and it is summarised as a footnote
+  on the card. Granted **Holy/Unholy/Anarchic/Axiomatic** now carry their alignment
+  bypass too, closing the last gap between granted and applied alignment weapons.
+  (DR is only calculated in the apply-damage dialog; damage applied without it has no
+  DR to bypass.)
 - **Scripting API** at `game.modules.get("pf1-magic-equipment").api`:
-  `listAbilities()`/`getAbility(key)` to enumerate the catalog, and
+  `listAbilities()`/`getAbility(key)` to enumerate the catalog,
   `rollBonus.setAbilities(item, keys)`/`rollBonus.getAbilities(item)` to configure the
   roll-bonuses "Magic Equipment Abilities" bonus from a macro or script call (e.g. a
-  buff whose create/use script lets the player pick an ability).
+  buff whose create/use script lets the player pick an ability), and
+  `rollBonus.setBypass(item, config)`/`getBypass(item)` plus `bypass.choices()` for the
+  DR Bypass bonus.
 
 ### Credits
 - Enhancement/pricing logic adapted from **pf1-auto-forge**.
