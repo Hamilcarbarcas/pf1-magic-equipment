@@ -194,10 +194,12 @@ function registerBridge(api) {
       const rowsKey = this.#rowsKey;
       const child = document.createElement('div');
       // `pf1me-section` gives the picker its styling; `pf1me-rb-picker` distinguishes it
-      // from the weapon sheet's own section, whose de-dup guard only removes
-      // `.pf1me-weapon-section` (so this picker survives each render).
+      // from the item sheet's own section, whose de-dup guard only removes
+      // `.pf1me-item-section` (so this picker survives each render).
       child.classList.add('pf1me-section', 'pf1me-rb-picker');
-      child.innerHTML = abilityPickerHtml(this.#rows(item), `rb-${item.id}`, isEditable);
+      // A grant is injected into an attack, so only the weapon catalog applies here
+      // regardless of what kind of item carries the buff.
+      child.innerHTML = abilityPickerHtml(this.#rows(item), `rb-${item.id}`, isEditable, ['weapon']);
 
       // Place it in the roll-bonuses container on the sheet's Advanced tab, using
       // roll-bonuses' own helper — appending to the raw sheet root instead lands the
@@ -211,6 +213,7 @@ function registerBridge(api) {
 
       wireAbilityPicker(child, {
         editable: isEditable,
+        kinds: ['weapon'],
         getAbilities: () => foundry.utils.deepClone(item.getFlag(RB_MODULE_ID, rowsKey) ?? []),
         setAbilities: (abilities) => item.setFlag(RB_MODULE_ID, rowsKey, abilities),
       });

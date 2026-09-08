@@ -30,19 +30,27 @@ import { alignmentOf, isRaging, creatureTypesOf, creatureSubtypesOf } from './co
 import { getBaneTypes, getBaneSubtypes } from './settings.mjs';
 import { MERCIFUL_CONDITIONAL } from './config.mjs';
 
+// Keyed `kind:key` — ability keys are not unique across catalogs (Defiant, Ghost
+// Touch and Impervious exist as weapon, armor AND shield abilities with different
+// effects), so a bare key would collide. See data.mjs.
 const HANDLERS = new Map();
 
-/** Register (or override) a handler for its ability key. */
+const handlerId = (key, kind) => `${kind ?? 'weapon'}:${key}`;
+
+/**
+ * Register (or override) a handler. `handler.kind` names the catalog its key
+ * belongs to and defaults to 'weapon'.
+ */
 export function registerHandler(handler) {
-  if (handler?.key) HANDLERS.set(handler.key, handler);
+  if (handler?.key) HANDLERS.set(handlerId(handler.key, handler.kind), handler);
 }
 
-export function getHandler(key) {
-  return HANDLERS.get(key) ?? null;
+export function getHandler(key, kind = 'weapon') {
+  return HANDLERS.get(handlerId(key, kind)) ?? null;
 }
 
-export function hasHandler(key) {
-  return HANDLERS.has(key);
+export function hasHandler(key, kind = 'weapon') {
+  return HANDLERS.has(handlerId(key, kind));
 }
 
 /* --------------------------------------------------------------------------

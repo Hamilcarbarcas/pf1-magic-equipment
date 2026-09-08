@@ -1,7 +1,7 @@
 {
   "id": "pf1-magic-equipment",
   "title": "PF1 Magic Equipment",
-  "description": "A backbone for applying magic properties to Pathfinder 1e weapons (and later armor): enhancement bonus, special abilities, and special materials, with automatic recomputation of value, weight, hp, hardness, and masterwork, plus runtime injection of ability effects.",
+  "description": "A backbone for applying magic properties to Pathfinder 1e weapons, armor and shields: enhancement bonus, special abilities, and special materials, with automatic recomputation of value, weight, hp, hardness, masterwork, armor check penalty and max Dex, plus runtime injection of ability effects.",
   "authors": [
     {
       "name": "Hamilcarbarcas",

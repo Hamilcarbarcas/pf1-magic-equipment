@@ -11,7 +11,20 @@ export const SETTINGS = Object.freeze({
   baneCustomTypes: 'baneCustomTypes',
   baneHumanoidSubtypes: 'baneHumanoidSubtypes',
   baneOutsiderSubtypes: 'baneOutsiderSubtypes',
+  masterworkMaterials: 'masterworkMaterials',
+  showHomebrew: 'showHomebrew',
 });
+
+/**
+ * Materials whose items are always masterwork. Additive to the registry's own
+ * `masterwork` flag, so homebrew materials registered by another mod still work
+ * without being listed here; entries are for materials the registry doesn't flag.
+ */
+const MASTERWORK_MATERIALS = [
+  'Adamantine', 'Angelskin', 'Darkleaf', 'Darkwood', 'Dragonhide',
+  'Fire-Forged Steel', 'Frost-Forged Steel', 'Greenwood', 'Horacalcum',
+  'Kanthaal Steel', 'Mithral', 'Silversheen', 'Singing Steel', 'Sunsilver',
+];
 
 /** Split a comma/newline-separated setting into a clean list. */
 function parseList(str) {
@@ -68,9 +81,56 @@ export function registerSettings() {
     type: String,
     default: OUTSIDER_SUBTYPES.join(', '),
   });
+
+  g.settings.register(MODULE_ID, SETTINGS.masterworkMaterials, {
+    name: 'PF1ME.Settings.MasterworkMaterials',
+    hint: 'PF1ME.Settings.MasterworkMaterialsHint',
+    scope: 'world',
+    config: true,
+    type: String,
+    default: MASTERWORK_MATERIALS.join(', '),
+    onChange: () => { masterworkCache = null; },
+  });
+
+  // Off by default so a public release ships RAW-only. Content marked `homebrew`
+  // is hidden from the pickers when off, but anything already applied to an item
+  // keeps working — turning this off must never silently change a character.
+  g.settings.register(MODULE_ID, SETTINGS.showHomebrew, {
+    name: 'PF1ME.Settings.ShowHomebrew',
+    hint: 'PF1ME.Settings.ShowHomebrewHint',
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: false,
+    onChange: () => { homebrewCache = null; },
+  });
+
+  registered = true;
 }
 
-const read = (key) => parseList(globalThis.game?.settings?.get(MODULE_ID, key));
+/**
+ * Read one of our settings, tolerating being called before `init` has registered
+ * them. PF1 builds its registries from inside the `init` hook and system listeners
+ * run before module ones, so anything reachable from `pf1Register*` can be asked for
+ * a setting that does not exist yet; `game.settings.get` throws in that window.
+ */
+function readSetting(key) {
+  try {
+    return globalThis.game?.settings?.get(MODULE_ID, key);
+  } catch (_e) {
+    return undefined; // not registered yet — callers fall back to their default
+  }
+}
+
+/**
+ * Set once `registerSettings` has run. The memoized getters below must not cache a
+ * pre-registration fallback, or an early call would freeze the wrong answer in for
+ * the rest of the session.
+ */
+let registered = false;
+
+const read = (key) => parseList(readSetting(key));
+const readBool = (key) => readSetting(key) === true;
 
 /** Buff names that count as "raging" (case-insensitive match). */
 export function getRageBuffNames() {
@@ -104,4 +164,55 @@ export function getBaneSubtypes(typeKey) {
   if (typeKey === 'humanoid') list = read(SETTINGS.baneHumanoidSubtypes);
   else if (typeKey === 'outsider') list = read(SETTINGS.baneOutsiderSubtypes);
   return list.map((s) => ({ key: s, label: s }));
+}
+
+/* --------------------------------------------------------------------------
+ * Homebrew / non-RAW content gate
+ * ------------------------------------------------------------------------ */
+
+// Cached: consulted while building every picker row. Invalidated by onChange.
+let homebrewCache = null;
+
+/**
+ * Whether homebrew and non-RAW content is offered in the pickers. Never gates what
+ * already applies to an item.
+ */
+export function showHomebrew() {
+  if (!registered) return readBool(SETTINGS.showHomebrew);
+  homebrewCache ??= readBool(SETTINGS.showHomebrew);
+  return homebrewCache;
+}
+
+/* --------------------------------------------------------------------------
+ * Always-masterwork materials
+ * ------------------------------------------------------------------------ */
+
+/** Lowercase alphanumerics only, so "Fire-Forged Steel" matches "fireForgedSteel". */
+const normalize = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+// Cached: the cost readout recomputes on every keystroke and settings.get is a
+// linear scan over every Setting document. Invalidated by the setting's onChange.
+let masterworkCache = null;
+
+/**
+ * Whether the GM's list names this material as always-masterwork. Matched against
+ * the registry id and the localized name, tolerating punctuation and a listed name
+ * that's a prefix of the id ("Darkleaf" → `darkleafCloth`).
+ * @param {object} mat a `pf1.registry.materials` entry.
+ */
+export function isListedMasterworkMaterial(mat) {
+  if (!mat) return false;
+  let names = masterworkCache;
+  if (!names) {
+    names = new Set(read(SETTINGS.masterworkMaterials).map(normalize));
+    if (registered) masterworkCache = names; // only memoize a post-registration read
+  }
+  if (!names.size) return false;
+  for (const candidate of [mat.id, mat._id, mat.name].filter(Boolean).map(normalize)) {
+    if (names.has(candidate)) return true;
+    for (const entry of names) {
+      if (entry.length >= 4 && candidate.startsWith(entry)) return true;
+    }
+  }
+  return false;
 }

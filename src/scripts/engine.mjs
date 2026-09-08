@@ -98,12 +98,22 @@ function conditionalCheckerFor(action, enabledIds) {
 
 function grantedAbilities(action) {
   const set = GRANTS.get(action);
-  return set ? [...set].map((key) => ({ key, params: {} })) : [];
+  // The roll-bonuses bridge only ever grants from the weapon catalog.
+  return set ? [...set].map((key) => ({ key, kind: 'weapon', params: {} })) : [];
 }
 
-/** Item's persisted abilities plus any transient grants for this action's use. */
+/**
+ * Item's persisted abilities plus any transient grants for this action's use,
+ * restricted to the weapon catalog — this engine's seams are all attack-time, and
+ * armor/shield abilities are passive worn effects handled at Apply instead.
+ *
+ * A shield reaches here through its bash action and correctly contributes only the
+ * weapon-catalog abilities applied to it; its own shield abilities and its AC
+ * enhancement bonus stay out of the attack.
+ */
 function activeAbilities(item, action) {
-  return [...getAppliedAbilities(item), ...grantedAbilities(action)];
+  return [...getAppliedAbilities(item), ...grantedAbilities(action)]
+    .filter((a) => (a.kind ?? 'weapon') === 'weapon');
 }
 
 /**
@@ -508,6 +518,27 @@ export function patchActionUse() {
       }
       return result;
     });
+  }
+
+  // Grant teardown. `pf1PostActionUse` is NOT a reliable place for this: it fires
+  // only on the success path, while `ActionUse.process` returns early whenever the
+  // attack dialog is cancelled, ammo or charges run out, or a requirement check
+  // fails — leaving the grant and any injected dialog conditional attached to the
+  // action. Wrapping `process` in a `finally` covers every exit including a throw.
+  if (globalThis.pf1?.actionUse?.ActionUse?.prototype?.process) {
+    registerWrapper('pf1.actionUse.ActionUse.prototype.process', async function (wrapped, ...args) {
+      try {
+        return await wrapped(...args);
+      } finally {
+        try {
+          clearGrants(this.action ?? this.shared?.action);
+        } catch (err) {
+          console.error('pf1-magic-equipment | grant teardown failed', err);
+        }
+      }
+    });
+  } else {
+    console.error('pf1-magic-equipment | ActionUse.process not found; transient grants may leak on a cancelled attack.');
   }
 }
 

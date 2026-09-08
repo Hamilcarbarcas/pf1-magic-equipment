@@ -2,7 +2,7 @@
 // numeric fallback cache, and the Apply step that writes the easy-bucket stats to
 // the weapon's native fields.
 
-import { MODULE_ID, FLAGS, defaultConfig, loc, MERCIFUL_CONDITIONAL } from './config.mjs';
+import { MODULE_ID, FLAGS, defaultConfig, loc, MERCIFUL_CONDITIONAL, itemKind } from './config.mjs';
 import { computeDerived, buildMagicName } from './calc.mjs';
 import { getHandler } from './ability-handlers.mjs';
 
@@ -27,13 +27,23 @@ export function extractBaseStats(doc) {
   const sys = doc?.system ?? {};
   const h = sys.hardness;
   const hardness = (h && typeof h === 'object') ? (h.base ?? 0) : (h ?? 0);
-  return {
+  const stats = {
     price: sys.price ?? 0,
     weight: sys.weight?.value ?? 0,
     hardness,
     hpBase: sys.hp?.base ?? 10,
     name: doc?.name ?? '',
   };
+  // Armor and shields carry four more numbers the material adjusts. `dex` is null
+  // for unlimited max Dex, which must survive the round-trip as null.
+  const kind = itemKind(doc);
+  if (kind === 'armor' || kind === 'shield') {
+    stats.armorValue = sys.armor?.value ?? 0;
+    stats.maxDex = sys.armor?.dex ?? null;
+    stats.acp = sys.armor?.acp ?? 0;
+    stats.asf = sys.spellFailure ?? 0;
+  }
+  return stats;
 }
 
 /** Cache a numeric baseline so Apply survives the base item going missing. */
@@ -52,8 +62,12 @@ export function getBaseCache(item) {
 export function getAppliedAbilities(item) {
   const applied = item?.getFlag(MODULE_ID, FLAGS.applied);
   const arr = Array.isArray(applied?.abilities) ? applied.abilities : [];
+  // `kind` was added when armor landed; snapshots written before that are weapons.
+  const fallback = itemKind(item) ?? 'weapon';
   return arr
-    .map((a) => (typeof a === 'string' ? { key: a, params: {} } : { key: a?.key, params: a?.params ?? {} }))
+    .map((a) => (typeof a === 'string'
+      ? { key: a, kind: fallback, params: {} }
+      : { key: a?.key, kind: a?.kind ?? fallback, params: a?.params ?? {} }))
     .filter((a) => a.key);
 }
 
@@ -106,20 +120,19 @@ export async function applyToItem(item) {
     return false;
   }
   const config = getConfig(item);
+  const kind = itemKind(item) ?? 'weapon';
   const d = computeDerived({ item, base, config });
 
   // Materialize the "applied" ability set the use-time engine reads. Draft edits
   // don't affect combat until this snapshot is written. Each entry carries its
-  // parameters (e.g. Bane's designated creature type).
+  // catalog kind and its parameters (e.g. Bane's designated creature type).
   const appliedAbilities = (config.abilities ?? [])
     .filter((r) => r.key)
-    .map((r) => ({ key: r.key, params: r.params ?? {} }));
-  const appliedKeys = appliedAbilities.map((a) => a.key);
+    .map((r) => ({ key: r.key, kind: r.kind ?? kind, params: r.params ?? {} }));
 
   const update = {
     system: {
       price: d.price,
-      enh: d.enh > 0 ? d.enh : null,
       masterwork: d.masterwork,
       weight: { value: d.weight },
       hardness: d.hardness,
@@ -130,29 +143,42 @@ export async function applyToItem(item) {
     flags: { [MODULE_ID]: { [FLAGS.applied]: { abilities: appliedAbilities } } },
   };
 
-  // Native writes onto the weapon's actions:
+  // The enhancement bonus lives in a different place per kind. For a shield it is
+  // an AC bonus only: it is deliberately NOT carried into the bash attack, which
+  // needs its own weapon enchantment (see config.catalogKinds).
+  if (kind === 'weapon') {
+    update.system.enh = d.enh > 0 ? d.enh : null;
+  } else {
+    update.system.armor = { enh: d.enh, value: d.armorValue, dex: d.maxDex, acp: d.acp };
+    update.system.spellFailure = d.asf;
+  }
+
+  // Native writes onto the item's actions — weapons, and a shield's bash action,
+  // which picks up weapon-catalog abilities:
   //  - DR alignment (Holy/Unholy/Anarchic/Axiomatic → good/evil/chaotic/lawful);
   //    weapons have no item-level alignment field. null = inherit, true = aligned.
   //  - Merciful's "deal lethal" conditional, which must live on the action to show
   //    as a toggle in the attack dialog.
   // We only rewrite the actions array when one of these is present now or was set by
-  // a previous Apply (so removal clears cleanly).
+  // a previous Apply (so removal clears cleanly). All three are weapon-catalog
+  // abilities, so only weapon-kind rows are consulted.
+  const weaponRows = appliedAbilities.filter((a) => a.kind === 'weapon');
   const ALIGN_MAP = { Holy: 'good', Unholy: 'evil', Anarchic: 'chaotic', Axiomatic: 'lawful' };
   const newAxes = [];
-  for (const key of appliedKeys) {
+  for (const { key } of weaponRows) {
     const ax = ALIGN_MAP[key];
     if (ax && !newAxes.includes(ax)) newAxes.push(ax);
   }
   const prevApplied = item.getFlag(MODULE_ID, FLAGS.applied) ?? {};
   const prevAxes = prevApplied.alignedAxes ?? [];
-  const wantMerciful = appliedKeys.includes('Merciful');
+  const wantMerciful = weaponRows.some((a) => a.key === 'Merciful');
   const prevMerciful = prevApplied.merciful === true;
 
   // Effect-note enrichers (condition-on-hit) and desired boolean flags from handlers.
   const newEffectNotes = [];
   const desiredFlags = [];
-  for (const key of appliedKeys) {
-    const h = getHandler(key);
+  for (const { key, kind: k } of weaponRows) {
+    const h = getHandler(key, k);
     if (h?.effectNote) {
       const t = typeof h.effectNote === 'function' ? h.effectNote() : h.effectNote;
       if (t) newEffectNotes.push(t);
@@ -183,13 +209,15 @@ export async function applyToItem(item) {
   update.flags[MODULE_ID][FLAGS.applied].booleanFlags = desiredFlags;
 
   // Actor-facing abilities: item-level changes + context notes (gathered while the
-  // weapon is equipped). Tracked by id/text so a re-apply removes our old ones
-  // without disturbing any the GM added by hand.
-  const cfg = { enh: d.enh, config };
+  // item is equipped). This is the primary mechanism for armor and shields, where
+  // almost every ability is a passive worn bonus rather than a use-time injection.
+  // Tracked by id/text so a re-apply removes our old ones without disturbing any
+  // the GM added by hand.
+  const cfg = { enh: d.enh, config, kind };
   const newChanges = [];
   const newContextNotes = [];
-  for (const key of appliedKeys) {
-    const h = getHandler(key);
+  for (const { key, kind: k } of appliedAbilities) {
+    const h = getHandler(key, k);
     for (const ch of h?.itemChanges?.(cfg) ?? []) {
       newChanges.push({ _id: foundry.utils.randomID(), operator: 'add', priority: 0, value: 0, ...ch });
     }
@@ -208,10 +236,18 @@ export async function applyToItem(item) {
   update.flags[MODULE_ID][FLAGS.applied].changeIds = newChanges.map((c) => c._id);
   update.flags[MODULE_ID][FLAGS.applied].contextNoteTexts = newContextNotes.map((n) => n.text);
 
+  // Optional caster level + aura. Both are recomputed from scratch, so removing the
+  // last magic property clears them back to mundane. `auraStrength` and the identify
+  // DC are derived by the system from `cl` and are deliberately not written.
+  if (config.setAura) {
+    update.system.cl = d.aura.cl;
+    update.system.aura = { school: d.aura.school, custom: d.aura.custom };
+  }
+
   // Optional renaming: set the identified name to reflect the magic properties,
   // and give the unidentified item the base name (only if it has none yet).
   if (config.rename) {
-    const magicName = buildMagicName({ base, config });
+    const magicName = buildMagicName({ base, config, kind });
     if (magicName) update.name = magicName;
     if (!item.system?.unidentified?.name && base.name) {
       update.system.unidentified.name = base.name;

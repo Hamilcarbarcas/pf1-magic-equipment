@@ -7,23 +7,49 @@ import { loc } from './config.mjs';
 import { CATEGORIES, categoryLabel, abilitiesInCategory, getAbility } from './data.mjs';
 import { getHandler } from './ability-handlers.mjs';
 
+/**
+ * A row's category dropdown is the cross product of the catalogs the item can draw
+ * from and the price buckets, so one control picks both. Option values are
+ * `kind:category`; a shield offers two optgroups (shield, then weapon — for its bash).
+ */
+function categoryOptionsHtml(kinds, row) {
+  const selKind = row.kind ?? kinds[0];
+  const selCat = row.category ?? 'all';
+  const group = (kind) => {
+    const opts = CATEGORIES
+      .map((c) => `<option value="${kind}:${c}" ${(kind === selKind && c === selCat) ? 'selected' : ''}>${esc(categoryLabel(c, loc))}</option>`)
+      .join('');
+    return kinds.length === 1
+      ? opts
+      : `<optgroup label="${esc(loc(`PF1ME.Kind.${kind}`))}">${opts}</optgroup>`;
+  };
+  return kinds.map(group).join('');
+}
+
 const gp = new Intl.NumberFormat();
 const gpStr = (n) => `${gp.format(Math.round(n || 0))} gp`;
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 /** HTML for a single ability row. `uid` disambiguates datalist ids across pickers. */
-function abilityRowHtml(row, index, uid, disabled) {
+function abilityRowHtml(row, index, uid, disabled, kinds) {
   const cat = row.category ?? 'all';
-  const catOpts = CATEGORIES.map((c) => `<option value="${c}" ${c === cat ? 'selected' : ''}>${esc(categoryLabel(c, loc))}</option>`).join('');
+  const kind = row.kind ?? kinds[0];
+  const catOpts = categoryOptionsHtml(kinds, row);
 
   const listId = `pf1me-abils-${uid}-${index}`;
-  const dataOpts = abilitiesInCategory(cat).map((a) => {
+  const dataOpts = abilitiesInCategory(cat, kind).map((a) => {
     const tag = a.costType === 'fixed' ? `${gpStr(a.priceMod)}` : `+${a.bonus}`;
     return `<option value="${esc(a.name)}" label="${esc(tag)}"></option>`;
   }).join('');
-  const selName = getAbility(row.key)?.name ?? '';
+  const ability = getAbility(row.key, kind);
+  const selName = ability?.name ?? '';
+  // Homebrew entries stay selectable once applied even if the setting is later
+  // turned off, so mark them rather than silently dropping them.
+  const hb = ability?.homebrew
+    ? `<i class="fas fa-flask pf1me-homebrew" title="${esc(loc('PF1ME.Homebrew.Marker'))}"></i>`
+    : '';
 
-  const paramSpec = getHandler(row.key)?.params;
+  const paramSpec = getHandler(row.key, kind)?.params;
   const specs = (typeof paramSpec === 'function' ? paramSpec(row.params ?? {}) : paramSpec) ?? [];
   const paramHtml = specs.map((spec) => {
     const cur = row.params?.[spec.key] ?? '';
@@ -42,15 +68,20 @@ function abilityRowHtml(row, index, uid, disabled) {
              value="${esc(selName)}" placeholder="${esc(loc('PF1ME.Abilities.PickAbility'))}"
              autocomplete="off" ${disabled}/>
       <datalist id="${listId}">${dataOpts}</datalist>
+      ${hb}
       ${paramHtml}
       <a class="pf1me-remove" data-action="remove-ability" title="${esc(loc('PF1ME.Abilities.Remove'))}"><i class="fas fa-times"></i></a>
     </div>`;
 }
 
-/** The full picker markup: a labelled header with add button, then the rows. */
-export function abilityPickerHtml(abilities, uid, editable) {
+/**
+ * The full picker markup: a labelled header with add button, then the rows.
+ * @param {string[]} kinds the ability catalogs this item may draw from (see
+ *   `config.catalogKinds`); the first is the default for a new row.
+ */
+export function abilityPickerHtml(abilities, uid, editable, kinds = ['weapon']) {
   const disabled = editable ? '' : 'disabled';
-  const rows = (abilities ?? []).map((row, i) => abilityRowHtml(row, i, uid, disabled)).join('');
+  const rows = (abilities ?? []).map((row, i) => abilityRowHtml(row, i, uid, disabled, kinds)).join('');
   return `
     <div class="pf1me-abilities" data-uid="${esc(uid)}">
       <div class="pf1me-abilities-head">
@@ -68,7 +99,7 @@ export function abilityPickerHtml(abilities, uid, editable) {
  * @param {HTMLElement} root element containing the picker (delegates from here).
  * @param {{ getAbilities: () => object[], setAbilities: (a: object[]) => any, editable: boolean }} io
  */
-export function wireAbilityPicker(root, { getAbilities, setAbilities, editable }) {
+export function wireAbilityPicker(root, { getAbilities, setAbilities, editable, kinds = ['weapon'] }) {
   if (!editable || !root) return;
 
   const rowIndex = (target) => Number(target.closest('.pf1me-ability-row')?.dataset.index);
@@ -81,7 +112,7 @@ export function wireAbilityPicker(root, { getAbilities, setAbilities, editable }
     if (action === 'add-ability') {
       ev.preventDefault();
       const abilities = getAbilities();
-      abilities.push({ category: 'all', key: '', params: {} });
+      abilities.push({ kind: kinds[0], category: 'all', key: '', params: {} });
       await setAbilities(abilities);
     } else if (action === 'remove-ability') {
       ev.preventDefault();
@@ -100,13 +131,18 @@ export function wireAbilityPicker(root, { getAbilities, setAbilities, editable }
     if (!abilities[idx]) return;
 
     if (action === 'ability-category') {
-      abilities[idx] = { category: target.value, key: '', params: {} };
+      // Value is `kind:category` — one control picks both, so changing either
+      // resets the row's ability (the key may not exist in the new catalog).
+      const [kind, category] = String(target.value).split(':');
+      abilities[idx] = { kind, category, key: '', params: {} };
       await setAbilities(abilities);
     } else if (action === 'ability-key') {
+      const row = abilities[idx];
       const val = String(target.value ?? '').trim().toLowerCase();
-      const match = abilitiesInCategory(abilities[idx].category ?? 'all').find((a) => a.name.toLowerCase() === val);
-      abilities[idx].key = match?.key ?? '';
-      abilities[idx].params = {};
+      const match = abilitiesInCategory(row.category ?? 'all', row.kind ?? kinds[0])
+        .find((a) => a.name.toLowerCase() === val);
+      row.key = match?.key ?? '';
+      row.params = {};
       await setAbilities(abilities);
     } else if (action === 'ability-param') {
       const pkey = target.dataset.param;

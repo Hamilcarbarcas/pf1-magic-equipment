@@ -68,6 +68,10 @@
 .pf1me-section .pf1me-ability-row .pf1me-cat { flex: 0 0 6.5rem; }
 .pf1me-section .pf1me-ability-row .pf1me-abil { flex: 1; min-width: 0; }
 .pf1me-section .pf1me-ability-row .pf1me-param { flex: 0 1 9rem; min-width: 0; }
+.pf1me-section .pf1me-ability-row .pf1me-homebrew { flex: 0 0 auto; opacity: 0.65; font-size: 0.85em; }
+/* A shield's category dropdown carries two optgroups, so it needs more room. */
+.pf1me-section.pf1me-shield .pf1me-ability-row .pf1me-cat { flex: 0 0 8rem; }
+.pf1me-section .pf1me-hint { margin: 0.2rem 0 0; font-size: 0.85em; opacity: 0.75; }
 
 /* Cost readout */
 .pf1me-section .pf1me-cost {

@@ -13,26 +13,88 @@ armor — from directly inside the item sheet.
 
 ## What it does
 
-On a weapon's sheet you get an embedded **Magic Equipment** section (right where
-the enhancement bonus lives) that lets you:
+On the sheet of a **weapon, suit of armor or shield** you get an embedded **Magic
+Equipment** section (right where the enhancement bonus lives) that lets you:
 
-- **Link a base item** — drag an unmodified version of the weapon from a compendium
+- **Link a base item** — drag an unmodified version of the item from a compendium
   onto the section. This is the pristine baseline everything is recomputed from, so
   applying repeatedly never compounds prices or weights.
 - **Set the enhancement bonus** (+1 … +5).
 - **Add special abilities** — a `+` button adds a row; each row narrows by category
   (+1…+5, Fixed cost, or All) and then picks the ability. Add as many as you like.
-- **Choose a special material**.
+- **Choose a special material** (and an add-on material such as alchemical silver).
 - **Toggle masterwork** (force-checked when an enhancement, ability, or a
   masterwork-requiring material is present).
 - See the running **cost**: the fully-inclusive total, the delta vs. what the item
-  currently costs, and an itemized breakdown.
+  currently costs, and an itemized breakdown — plus the caster level and aura the
+  item will end up with.
 
-Hitting **Apply** recomputes and writes the weapon's real numbers — value,
+Hitting **Apply** recomputes and writes the item's real numbers — value,
 unidentified price, weight, hit points, hardness, masterwork, material, and base
-enhancement bonus. Ability *effects* are applied separately at use-time without
-altering the weapon's editable fields (rolling out over time; unimplemented
-abilities show a short footnote describing what they do).
+enhancement bonus, plus, on armor and shields, the AC bonus, maximum Dex bonus,
+armor check penalty and arcane spell failure with the material's adjustments folded
+in.
+
+### Caster level and aura
+
+Two checkboxes at the top of the section control the optional writes, both on by
+default:
+
+- **Rename** — name the item for its magic properties ("+2 Flaming Dagger") and give
+  the unidentified item the base item's name.
+- **Set aura** — recompute the caster level and school.
+
+The caster level is the highest single contributor: three times the enhancement bonus,
+or any special ability's own caster level, whichever is greater. Abilities aren't
+summed — each carries its own prerequisite — so a *+1 flaming* longsword is caster
+level 10, not 3. The school follows whichever contributor set the level, with a plain
+enhancement bonus reading as transmutation; if several tie with different schools, the
+aura lists them all. Aura strength and the identify DC follow from the caster level on
+their own.
+
+Both are recomputed from scratch, so removing the last magic property returns the item
+to mundane. Untick them if you'd rather set the name or aura by hand.
+
+### Weapons vs. armor
+
+The two work differently, because the items do:
+
+- **Weapon** abilities mostly fire when you attack, so they're injected at use-time
+  and never touch the action's editable fields.
+- **Armor and shield** abilities are passive bonuses while the item is worn, so
+  they're written to the item as native changes and context notes and picked up by
+  the system the moment it's equipped.
+
+A **shield** is both. Its ability picker offers shield abilities *and* weapon
+abilities, and any weapon ability you add applies to its shield bash. The shield's
+enhancement bonus is an AC bonus and does not carry into the bash — that needs its
+own enchantment, which isn't modelled.
+
+Abilities that don't have an implementation yet still price, name and catalogue
+correctly; on weapons they add a short footnote to the attack card describing what
+they do.
+
+## Settings
+
+All of these are comma-separated lists in the module settings, editable by the GM,
+so table rulings and homebrew don't need a code change:
+
+- **Rage buff names** / **Rage buff flags** — what counts as "raging" for
+  rage-gated abilities such as Furious.
+- **Extra bane creature types** — creature-type keys offered as Bane targets on top
+  of the system's built-in list.
+- **Bane humanoid subtypes** / **Bane outsider subtypes** — the subtype choices
+  shown when Bane's designated foe is Humanoid or Outsider (those two types can't be
+  designated on their own).
+- **Always-masterwork materials** — materials that force the masterwork toggle. This
+  is *in addition to* the materials the system already flags as always-masterwork, so
+  a homebrew material registered with that flag is picked up without being listed.
+
+And one checkbox:
+
+- **Include homebrew content** (off by default) — offer non-RAW abilities and
+  materials in the pickers. Turning it off only hides them from the pickers; anything
+  already applied to an item keeps working, and is marked so you can find it.
 
 ## Optional: roll-bonuses integration
 
@@ -80,9 +142,16 @@ Enumerate abilities (for a selection dialog):
 
 ```js
 const api = game.modules.get("pf1-magic-equipment").api;
-api.listAbilities();          // -> [{ key, name, category }] (category: '1'…'5' | 'fixed')
-api.getAbility("Flaming");    // -> one ability descriptor
+api.listAbilities();                    // every catalog -> [{ key, name, kind, category, homebrew }]
+api.listAbilities("armor");             // just one catalog (category: '1'…'5' | 'fixed')
+api.getAbility("Flaming");              // weapon catalog by default
+api.getAbility("GhostTouch", "shield"); // keys are only unique within a kind
+api.itemKind(item);                     // 'weapon' | 'armor' | 'shield' | null
 ```
+
+> Ability keys repeat across catalogs — *Ghost Touch*, *Defiant* and *Impervious*
+> exist as weapon, armor and shield abilities with different prices and effects — so
+> anything beyond the weapon catalog needs the kind.
 
 Configure the roll-bonuses **Magic Equipment Abilities** bonus on an item from a
 script — e.g. an "on create/use" script on a buff that lets the player pick an

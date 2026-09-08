@@ -37,5 +37,18 @@
   "PF1ME.Settings.BaneHumanoidSubtypes": "Bane humanoid subtypes",
   "PF1ME.Settings.BaneHumanoidSubtypesHint": "Comma-separated humanoid subtypes offered when Bane's designated foe is Humanoid.",
   "PF1ME.Settings.BaneOutsiderSubtypes": "Bane outsider subtypes",
-  "PF1ME.Settings.BaneOutsiderSubtypesHint": "Comma-separated outsider subtypes offered when Bane's designated foe is Outsider."
+  "PF1ME.Settings.BaneOutsiderSubtypesHint": "Comma-separated outsider subtypes offered when Bane's designated foe is Outsider.",
+  "PF1ME.Settings.MasterworkMaterials": "Always-masterwork materials",
+  "PF1ME.Settings.MasterworkMaterialsHint": "Comma-separated materials that force masterwork, in addition to any the system already flags.",
+  "PF1ME.Settings.ShowHomebrew": "Include homebrew content",
+  "PF1ME.Settings.ShowHomebrewHint": "Offer non-RAW abilities and materials in the pickers. Already-applied items keep working either way.",
+  "PF1ME.Kind.weapon": "Weapon",
+  "PF1ME.Kind.armor": "Armor",
+  "PF1ME.Kind.shield": "Shield",
+  "PF1ME.Enh.LabelArmor": "Enhancement bonus (AC)",
+  "PF1ME.Homebrew.Marker": "Homebrew / non-RAW",
+  "PF1ME.Shield.BashHint": "Weapon abilities apply to this shield's bash; the AC enhancement bonus does not.",
+  "PF1ME.Aura.Label": "Set aura",
+  "PF1ME.Aura.Hint": "On Apply, recompute caster level and school.",
+  "PF1ME.Aura.Readout": "Caster level"
 }

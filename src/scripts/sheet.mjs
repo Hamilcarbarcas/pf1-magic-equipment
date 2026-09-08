@@ -2,10 +2,10 @@
 // inject it after the enhancement field, and wire live-persisting controls, the
 // base-item drop zone, the cost readout, and the Apply button.
 
-import { MODULE_ID, isSupported, loc, MAX_ENH_EQUIVALENT } from './config.mjs';
+import { MODULE_ID, isSupported, loc, MAX_ENH_EQUIVALENT, itemKind, catalogKinds } from './config.mjs';
 import { getMaterial, materialsForItem, addonMaterialsForItem } from './data.mjs';
 import { getConfig, setConfig, setBaseItem, clearBaseItem, getBaseCache, applyToItem } from './item-config.mjs';
-import { computeCost } from './calc.mjs';
+import { computeCost, computeAura } from './calc.mjs';
 import { abilityPickerHtml, wireAbilityPicker } from './ability-picker.mjs';
 
 const gp = new Intl.NumberFormat();
@@ -20,14 +20,16 @@ export function injectSection(app, html) {
   const item = app?.item ?? app?.document;
   if (!isSupported(item) || !root) return;
 
-  const enhInput = root.querySelector('input[name="system.enh"]');
+  // The enhancement field lives in a different place per kind; anchor to whichever
+  // this sheet has so the section lands in the same relative spot on all three.
+  const enhInput = root.querySelector('input[name="system.enh"], input[name="system.armor.enh"]');
   const anchor = enhInput?.closest('.form-group');
   if (!anchor) return; // enhancement field not present (unexpected) — bail quietly
 
-  // Avoid double-injection on partial re-renders. Target our own weapon section
+  // Avoid double-injection on partial re-renders. Target our own item section
   // specifically — NOT the generic `.pf1me-section`, which the roll-bonuses bridge
   // picker also uses (removing that here would delete the RB picker each render).
-  root.querySelector('.pf1me-weapon-section')?.remove();
+  root.querySelector('.pf1me-item-section')?.remove();
 
   const editable = app.isEditable !== false;
   const section = buildSection(item, editable);
@@ -40,9 +42,10 @@ function buildSection(item, editable) {
   const cfg = getConfig(item);
   const base = getBaseCache(item);
   const disabled = editable ? '' : 'disabled';
+  const kind = itemKind(item) ?? 'weapon';
 
   const el = document.createElement('div');
-  el.className = 'pf1me-section pf1me-weapon-section';
+  el.className = `pf1me-section pf1me-item-section pf1me-${kind}`;
 
   const materialOptions = materialOptionsHtml(item, cfg.materialKey);
   const addonOptions = addonOptionsHtml(item, cfg.materialKey, cfg.addonKey);
@@ -59,6 +62,10 @@ function buildSection(item, editable) {
         <input type="checkbox" data-action="rename" ${cfg.rename ? 'checked' : ''} ${disabled}/>
         ${esc(loc('PF1ME.Rename.Label'))}
       </label>
+      <label class="pf1me-rename" title="${esc(loc('PF1ME.Aura.Hint'))}">
+        <input type="checkbox" data-action="set-aura" ${cfg.setAura ? 'checked' : ''} ${disabled}/>
+        ${esc(loc('PF1ME.Aura.Label'))}
+      </label>
       <label class="pf1me-baselabel">${esc(loc('PF1ME.BaseItem.Label'))}</label>
       <div class="pf1me-drop ${cfg.baseUuid ? 'linked' : ''}" data-action="drop-hint">
         <span class="pf1me-basename">${cfg.baseUuid ? esc(base?.name || loc('PF1ME.BaseItem.Label')) : esc(loc('PF1ME.BaseItem.Drop'))}</span>
@@ -67,11 +74,11 @@ function buildSection(item, editable) {
     </div>
 
     <div class="pf1me-enh form-group">
-      <label>${esc(loc('PF1ME.Enh.Label'))}</label>
+      <label>${esc(loc(kind === 'weapon' ? 'PF1ME.Enh.Label' : 'PF1ME.Enh.LabelArmor'))}</label>
       <input type="number" class="pf1me-input" data-action="enh" min="0" max="10" step="1" value="${Number(cfg.enh) || 0}" ${disabled}/>
     </div>
 
-    ${abilityPickerHtml(cfg.abilities, `item-${item.id}`, editable)}
+    ${abilityPickerHtml(cfg.abilities, `item-${item.id}`, editable, catalogKinds(kind))}
 
     <div class="pf1me-material form-group">
       <label>${esc(loc('PF1ME.Material.Label'))}</label>
@@ -89,6 +96,7 @@ function buildSection(item, editable) {
     </div>
 
     ${costHtml(item, cfg, base)}
+    ${kind === 'weapon' ? '' : shieldBashHintHtml(kind)}
 
     <div class="pf1me-actions">
       <button type="button" class="pf1me-apply" data-action="apply" ${disabled}>
@@ -100,10 +108,17 @@ function buildSection(item, editable) {
 }
 
 
+/** One-line reminder of the shield-bash rule the picker's two catalogs imply. */
+function shieldBashHintHtml(kind) {
+  if (kind !== 'shield') return '';
+  return `<p class="notes pf1me-hint">${esc(loc('PF1ME.Shield.BashHint'))}</p>`;
+}
+
 function materialOptionsHtml(item, selected) {
   const opts = [`<option value="" ${!selected ? 'selected' : ''}>${esc(loc('PF1ME.Material.None'))}</option>`];
   for (const m of materialsForItem(item)) {
-    opts.push(`<option value="${esc(m.id)}" ${m.id === selected ? 'selected' : ''}>${esc(m.name)}</option>`);
+    const mark = m.homebrew ? ' ⚗' : '';
+    opts.push(`<option value="${esc(m.id)}" ${m.id === selected ? 'selected' : ''}>${esc(m.name)}${mark}</option>`);
   }
   // If a previously-selected material is no longer "allowed" for this item, keep it visible.
   if (selected && !opts.some((o) => o.includes(`value="${selected}"`))) {
@@ -116,7 +131,8 @@ function materialOptionsHtml(item, selected) {
 function addonOptionsHtml(item, normalKey, selected) {
   const opts = [`<option value="" ${!selected ? 'selected' : ''}>${esc(loc('PF1ME.Material.None'))}</option>`];
   for (const m of addonMaterialsForItem(item, normalKey)) {
-    opts.push(`<option value="${esc(m.id)}" ${m.id === selected ? 'selected' : ''}>${esc(m.name)}</option>`);
+    const mark = m.homebrew ? ' ⚗' : '';
+    opts.push(`<option value="${esc(m.id)}" ${m.id === selected ? 'selected' : ''}>${esc(m.name)}${mark}</option>`);
   }
   if (selected && !opts.some((o) => o.includes(`value="${selected}"`))) {
     const mat = getMaterial(selected);
@@ -147,9 +163,28 @@ function costHtml(item, cfg, base) {
         ${b.material ? `<div><span>${esc(loc('PF1ME.Cost.Material'))}</span><span>${gpStr(b.material)}</span></div>` : ''}
         ${b.masterwork ? `<div><span>${esc(loc('PF1ME.Cost.Masterwork'))}</span><span>${gpStr(b.masterwork)}</span></div>` : ''}
         ${b.enhancement ? `<div><span>${esc(loc('PF1ME.Cost.Enhancement'))} (+${c.totalEquivalent})</span><span>${gpStr(b.enhancement)}</span></div>` : ''}
+        ${auraRowHtml(item, cfg)}
       </div>
       ${warn}
     </div>`;
+}
+
+/** Caster level + aura school, shown alongside the cost so it's visible pre-Apply. */
+function auraRowHtml(item, cfg) {
+  if (!cfg.setAura) return '';
+  const a = computeAura({ config: cfg, kind: itemKind(item) ?? 'weapon' });
+  if (!a.cl && !a.school) return '';
+  const school = a.custom ? a.school : schoolName(a.school);
+  return `<div><span>${esc(loc('PF1ME.Aura.Readout'))}</span><span>${esc(
+    school ? `CL ${a.cl} · ${school}` : `CL ${a.cl}`,
+  )}</span></div>`;
+}
+
+/** Localized name for a `pf1.config.spellSchools` key, or '' when unset. */
+function schoolName(key) {
+  if (!key) return '';
+  const entry = globalThis.pf1?.config?.spellSchools?.[key];
+  return entry ? loc(entry) : key;
 }
 
 function isMasterworkForced(cfg) {
@@ -215,6 +250,8 @@ function wireEvents(section, item, app, editable) {
     if (action === 'masterwork') { await rerenderViaFlag({ masterwork: !!target.checked }); return; }
 
     if (action === 'rename') { await rerenderViaFlag({ rename: !!target.checked }); return; }
+
+    if (action === 'set-aura') { await rerenderViaFlag({ setAura: !!target.checked }); return; }
   });
 
   // The ability list is the shared picker; it persists via setConfig (which
@@ -223,6 +260,7 @@ function wireEvents(section, item, app, editable) {
   if (picker) {
     wireAbilityPicker(picker, {
       editable,
+      kinds: catalogKinds(itemKind(item) ?? 'weapon'),
       getAbilities: () => getConfig(item).abilities,
       setAbilities: (abilities) => setConfig(item, { abilities }),
     });

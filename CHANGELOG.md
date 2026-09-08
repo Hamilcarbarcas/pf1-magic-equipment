@@ -103,6 +103,52 @@
   bypass too, closing the last gap between granted and applied alignment weapons.
   (DR is only calculated in the apply-damage dialog; damage applied without it has no
   DR to bypass.)
+- **Caster level and aura are now set on Apply**, controlled by a new **Set aura**
+  checkbox next to the renaming one (on by default). The caster level is the highest
+  single contributor — three times the enhancement bonus, or any special ability's own
+  caster level, whichever is greater — and the school follows whichever of those set
+  it, with a plain enhancement bonus reading as transmutation. Where several abilities
+  tie with different schools, the aura lists them all rather than picking one. Aura
+  strength and the identify DC follow from the caster level automatically. The value
+  is shown in the cost readout before you Apply.
+- **Armor and shields are now supported** alongside weapons. The same embedded
+  section appears on their sheets, with the full catalogs of armor (109) and shield
+  (47) special abilities.
+  - Apply writes the armor-specific native fields as well: AC bonus, enhancement
+    bonus, maximum Dex bonus, armor check penalty and arcane spell failure, with the
+    chosen material's adjustments folded in (mithral's −3 ACP, +2 max Dex, −10% ASF,
+    half weight, and so on).
+  - Armor and shield abilities are **passive bonuses while the item is worn**, so
+    they're written to the item as native changes and context notes rather than
+    injected into a roll. Implemented in this release: the Slick, Shadow and
+    Aquadynamic lines, Corsair, Jousting, Amorphous, Mind Buttressing, Arrow
+    Catching and Rebounding as real bonuses; Spell Resistance, Energy Resistance,
+    Fortification, Ghost Touch, Poison Resistant, Defiant, Wild and around forty
+    others as reminders on the relevant roll. Abilities without an implementation
+    still price, name and catalogue correctly.
+  - **Shields carry both catalogs.** A shield's ability picker offers shield
+    abilities *and* weapon abilities, and weapon abilities apply to its shield bash
+    through the same engine weapons use. The shield's enhancement bonus is an AC
+    bonus and is deliberately not carried into the bash.
+- **Homebrew content is now marked and gated.** An **Include homebrew content**
+  setting (off by default) controls whether non-RAW abilities and materials appear
+  in the pickers; anything already applied to an item keeps working regardless, and
+  is flagged in the picker. Kanthaal Steel is included as a homebrew material —
+  **its numbers are placeholders**.
+- **Pricing fixes** (these affected weapons too):
+  - Materials that list both a flat price and a per-pound price (mithral) no longer
+    charge both. A mithral chain shirt priced at 16,650 gp instead of 4,000 gp.
+  - Mixed enchantments are banded per pricing table and summed, rather than sharing
+    a single band.
+- **Fixed: roll-bonuses ability grants leaked when an attack was cancelled.**
+  Cancelling the attack dialog (or running out of ammo or charges) left the granted
+  abilities and any injected dialog toggle attached to the action, so the next attack
+  could apply them again. Teardown now runs on every exit path.
+- **Always-masterwork materials** are now a GM-editable setting, defaulting to
+  Adamantine, Angelskin, Darkleaf, Darkwood, Dragonhide, Fire-Forged Steel,
+  Frost-Forged Steel, Greenwood, Horacalcum, Kanthaal Steel, Mithral, Silversheen,
+  Singing Steel, and Sunsilver. It's additive to the materials the system already
+  flags, so homebrew materials registered with that flag still work unlisted.
 - **Scripting API** at `game.modules.get("pf1-magic-equipment").api`:
   `listAbilities()`/`getAbility(key)` to enumerate the catalog,
   `rollBonus.setAbilities(item, keys)`/`rollBonus.getAbilities(item)` to configure the
