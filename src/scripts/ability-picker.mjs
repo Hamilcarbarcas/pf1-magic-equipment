@@ -39,7 +39,8 @@ function abilityRowHtml(row, index, uid, disabled, kinds) {
   const listId = `pf1me-abils-${uid}-${index}`;
   const dataOpts = abilitiesInCategory(cat, kind).map((a) => {
     const tag = a.costType === 'fixed' ? `${gpStr(a.priceMod)}` : `+${a.bonus}`;
-    return `<option value="${esc(a.name)}" label="${esc(tag)}"></option>`;
+    // Some browsers display and filter on the label alone, so it must carry the name.
+    return `<option value="${esc(a.name)}" label="${esc(`${a.name} (${tag})`)}"></option>`;
   }).join('');
   const ability = getAbility(row.key, kind);
   const selName = ability?.name ?? '';
