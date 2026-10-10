@@ -110,14 +110,42 @@ against DR, just like an applied one). The **actor-facing "while equipped" bonus
 (Brawling, Courageous, …) still only exist when the ability is applied to the weapon,
 because they're written to the item.
 
-### DR Bypass bonus
+### Defense Bypass bonus
 
-A second bonus type, **DR Bypass**, is for effects that defeat damage reduction
-*without* being a weapon property — Smite Evil, Align Weapon, Ki Strike, a bard's
-*bane of the fey*, and so on. Tick the properties the attack should count as
-(magic, epic, cold iron, silver, adamantine, or an alignment), or tick **Bypass ALL
-damage reduction** for Smite Evil. There's also a **Bypass DR/—** option for the rare
-effect that defeats untyped DR only.
+A second bonus type, **Defense Bypass (magic equipment)**, is for effects that weaken
+the defenses an attack meets *without* being a weapon property: Smite Evil, Align
+Weapon, Ki Strike, a bard's *bane of the fey*, a spell that pierces energy
+resistance, and so on. Choose what it does from the **Mode** list at the top:
+
+| Mode | Effect |
+| --- | --- |
+| **Bypass DR as** | Tick the properties the attack counts as (magic, epic, cold iron, silver, adamantine, or an alignment), or **Bypass ALL damage reduction** for Smite Evil, or **Bypass DR/—** for the rare effect that defeats untyped DR only |
+| **DR Bypass** | The attack gets past DR of the chosen type |
+| **DR Reduction** | DR of the chosen type is lower by the **Amount** |
+| **ER Bypass** | Resistance to the chosen energy type is ignored |
+| **ER Reduction** | Resistance to the chosen energy type is lower by the **Amount** |
+| **Hardness Bypass** | Hardness is ignored |
+| **Hardness Reduction** | Hardness is lower by the **Amount** |
+
+- **Type:** a DR type, an energy type, or **Any**. DR also offers **DR/— only**.
+  Hardness has no type.
+- **Maximum** (bypasses only): only defenses this high or lower are ignored. A
+  Hardness Bypass with a maximum of 19 gets through hardness 19 but not hardness 20,
+  like adamantine. Blank means no limit.
+- **Amount** (reductions only): an ER Reduction of 10 against Fire Resistance 15 leaves
+  5. A defense can't go below 0.
+- Maximum and Amount accept formulas, worked out from the bonus's item when the
+  attack is made.
+
+A DR Bypass treats the attack as having that type: DR 10/magic and good still needs
+magic, but DR 10/good or silver is gone entirely. Bypasses apply first, then
+reductions. If two bonuses give the same reduction, the higher one applies; they
+don't add up. These rules match **Defense Override** in
+[PF1 Defense Manager](https://github.com/Hamilcarbarcas/pf1-defense-manager), which
+does the same thing from the defender's side ("attacks against this creature …").
+
+An item holds one Defense Bypass, so one mode. Existing **DR Bypass** bonuses carry
+over as **Bypass DR as**.
 
 It is not weapon-specific: because it's a roll-bonus, it works on unarmed strikes and
 natural attacks too, and roll-bonuses' own targeting decides which attacks it applies
@@ -125,9 +153,10 @@ to (use a *conditional* target — e.g. the target's alignment — to restrict S
 the creature you smote).
 
 The bypass is recorded on the attack card as a footnote ("Bypasses all damage
-reduction (Smite Evil)") and stamped onto the chat message, then read back when
-damage is applied — so it still works if the buff has ended, or been switched off,
-between the roll and the GM clicking *apply damage*.
+reduction (Smite Evil)", "Ignores hardness of 19 or less (Sunder)") and stamped onto
+the chat message, then read back when damage is applied — so it still works if the
+buff has ended, or been switched off, between the roll and the GM clicking *apply
+damage*.
 
 > Damage reduction is only calculated in the **apply-damage dialog**. If damage is
 > applied without it (shift-click, or an automation module that skips it), PF1
@@ -174,21 +203,28 @@ api.rollBonus.getAbilities(item);   // -> [{ category, key, params }]
 can be configured entirely from script. (The bonus still needs a roll-bonuses
 *target* to decide which weapon/action it applies to — configure that on the buff.)
 
-Configure the **DR Bypass** bonus the same way:
+Configure the **Defense Bypass** bonus the same way:
 
 ```js
 const api = game.modules.get("pf1-magic-equipment").api;
 
-// Smite Evil — ignore damage reduction entirely:
+// Smite Evil – ignore damage reduction entirely:
 await api.rollBonus.setBypass(item, { ignoreAll: true });
 
-// Align Weapon / Ki Strike — count as specific properties:
+// Align Weapon / Ki Strike – count as specific properties:
 await api.rollBonus.setBypass(item, { types: ["good"] });
 await api.rollBonus.setBypass(item, { types: ["magic", "coldIron"] });
 
-api.rollBonus.getBypass(item);   // -> { types, ignoreAll, ignoreGeneric }
-api.bypass.choices();            // -> [{ key, label, group }] every id setBypass accepts
+// The other modes: drBypass | drReduce | erBypass | erReduce | hardnessBypass | hardnessReduce
+await api.rollBonus.setBypass(item, { mode: "hardnessBypass", max: "19" });
+await api.rollBonus.setBypass(item, { mode: "erReduce", type: "fire", amount: "@cl" });
+
+api.rollBonus.getBypass(item);   // -> { mode, types, ignoreAll, ignoreGeneric, type, amount, max }
+api.bypass.choices();            // -> [{ key, label, group }] every id `types` accepts
 ```
+
+For the other modes, `type` is a DR or energy type id, `"*"` for any, or `"-"` for
+DR/— only; hardness takes none.
 
 ## Credits
 

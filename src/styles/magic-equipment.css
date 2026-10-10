@@ -101,6 +101,13 @@
 .pf1me-section .pf1me-apply { flex: 0 0 auto; padding: 0.25rem 0.9rem; cursor: pointer; }
 
 /* DR bypass picker (roll-bonuses bonus input) */
+/* Defense Bypass: labeled rows for the mode and its fields. */
+.pf1me-section .pf1me-bypass-row {
+  display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;
+}
+.pf1me-section .pf1me-bypass-row > label { flex: 0 0 6rem; font-weight: 600; }
+.pf1me-section .pf1me-bypass-row > select,
+.pf1me-section .pf1me-bypass-row > input { flex: 1 1 auto; }
 .pf1me-section .pf1me-bypass-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));

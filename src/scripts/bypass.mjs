@@ -17,6 +17,10 @@
 // because the auto-apply path re-enters with cloned options), the bypass is
 // SNAPSHOTTED onto the chat message at use time and read back from there. This also
 // matches the system's own TODO about caching attack data on the message.
+//
+// Defense overrides (DR, ER, and hardness bypass and reduction) ride the same snapshot
+// and edit each target's rows in the dialog directly. Their rules match pf1-defense-
+// manager's Defense Override, which does the same thing from the defender's side.
 
 import { MODULE_ID } from './config.mjs';
 import { getHandler } from './ability-handlers.mjs';
@@ -33,22 +37,55 @@ const MAGIC_ID = 'magic';
  * ------------------------------------------------------------------------ */
 
 /**
+ * @typedef {object} DefenseOverride
+ * @property {string} mode    "drBypass" | "drReduce" | "erBypass" | "erReduce" | "hardnessBypass" | "hardnessReduce"
+ * @property {string} type    DR or energy type id, ANY_TYPE, or GENERIC_DR; "" for hardness
+ * @property {number} amount  reduction, already resolved
+ * @property {number|null} max  bypass ceiling, already resolved; null is no limit
+ */
+
+/**
  * @typedef {object} BypassDescriptor
  * @property {string[]} materials  material / alignment / epic registry ids
  * @property {boolean}  magic      counts as magic
  * @property {boolean}  ignoreAll  ignore every DR entry (Smite Evil)
  * @property {boolean}  ignoreGeneric  ignore DR/— only
+ * @property {DefenseOverride[]} overrides  bypasses and reductions of DR, ER, and hardness
  * @property {string[]} sources    labels of what granted this, for the footnote
  */
 
+/** Override modes, shared with pf1-defense-manager's Defense Override. DESIGN.md §7d */
+export const OVERRIDE_MODES = ['drBypass', 'drReduce', 'erBypass', 'erReduce', 'hardnessBypass', 'hardnessReduce'];
+
+/** Override type matching every DR or ER entry. */
+export const ANY_TYPE = '*';
+/** Override type matching only untyped DR (DR/—). */
+export const GENERIC_DR = '-';
+
+/** "dr" | "er" | "hardness" */
+export const overrideKind = (mode) => String(mode ?? '').replace(/(Bypass|Reduce)$/, '');
+export const isBypassMode = (mode) => String(mode ?? '').endsWith('Bypass');
+
 /** A fresh, empty descriptor. */
 export function emptyBypass() {
-  return { materials: [], magic: false, ignoreAll: false, ignoreGeneric: false, sources: [] };
+  return { materials: [], magic: false, ignoreAll: false, ignoreGeneric: false, overrides: [], sources: [] };
 }
 
 /** Whether a descriptor actually grants anything. */
 export function hasBypass(b) {
-  return !!b && (b.magic || b.ignoreAll || b.ignoreGeneric || b.materials?.length > 0);
+  return !!b && (b.magic || b.ignoreAll || b.ignoreGeneric || b.materials?.length > 0 || b.overrides?.length > 0);
+}
+
+/** A stored or granted override, coerced; null if it isn't one. */
+function normalizeOverride(raw) {
+  if (!raw || !OVERRIDE_MODES.includes(raw.mode)) return null;
+  const max = raw.max === null || raw.max === undefined || raw.max === '' ? null : Number(raw.max);
+  return {
+    mode: raw.mode,
+    type: String(raw.type ?? ''),
+    amount: Math.max(0, Number(raw.amount) || 0),
+    max: Number.isFinite(max) ? max : null,
+  };
 }
 
 /**
@@ -96,6 +133,13 @@ export function mergeBypass(target, contribution) {
     if (alias && !target.materials.includes(alias)) target.materials.push(alias);
   }
 
+  for (const raw of Array.isArray(contribution.overrides) ? contribution.overrides : []) {
+    const o = normalizeOverride(raw);
+    if (!o) continue;
+    const same = (x) => x.mode === o.mode && x.type === o.type && x.amount === o.amount && x.max === o.max;
+    if (!target.overrides.some(same)) target.overrides.push(o);
+  }
+
   for (const s of Array.isArray(contribution.sources) ? contribution.sources : []) {
     if (s && !target.sources.includes(s)) target.sources.push(s);
   }
@@ -136,9 +180,41 @@ export function bypassChoices() {
   return out;
 }
 
+/**
+ * DR types an override can target: Any, DR/— only, then everything `bypassChoices` offers
+ * plus the physical damage types (DR 5/bludgeoning).
+ * @returns {{key: string, label: string}[]}
+ */
+export function drOverrideChoices() {
+  const out = [
+    { key: ANY_TYPE, label: 'Any' },
+    { key: GENERIC_DR, label: 'DR/— only' },
+    ...bypassChoices().map(({ key, label }) => ({ key, label })),
+  ];
+  for (const dt of globalThis.pf1?.registry?.damageTypes ?? []) {
+    const key = dt.id ?? dt._id;
+    if (key && dt.category === 'physical' && !out.some((o) => o.key === key)) out.push({ key, label: dt.name ?? key });
+  }
+  return out;
+}
+
+/** Energy types an override can target, with Any first. */
+export function erOverrideChoices() {
+  const out = [{ key: ANY_TYPE, label: 'Any' }];
+  for (const dt of globalThis.pf1?.registry?.damageTypes ?? []) {
+    const key = dt.id ?? dt._id;
+    if (key && dt.category === 'energy') out.push({ key, label: dt.name ?? key });
+  }
+  return out;
+}
+
 /** Display label for a bypass id. */
 function labelFor(id) {
   if (id === MAGIC_ID) return 'magic';
+  if (id === ANY_TYPE) return 'any';
+  if (id === GENERIC_DR) return '—';
+  const dt = globalThis.pf1?.registry?.damageTypes?.get(id);
+  if (dt) return (dt.name ?? id).toLowerCase();
   const mat = globalThis.pf1?.registry?.materials?.get(id);
   if (mat) return (mat.shortName || mat.name || id).toLowerCase();
   const align = globalThis.pf1?.config?.damageResistances?.[id];
@@ -147,7 +223,7 @@ function labelFor(id) {
 }
 
 /* --------------------------------------------------------------------------
- * Transient grants (roll-bonuses "DR Bypass" bonus)
+ * Transient grants (roll-bonuses "Defense Bypass" bonus)
  * ------------------------------------------------------------------------ */
 
 /** action -> descriptor, populated at the start of a use and cleared at the end. */
@@ -222,16 +298,33 @@ export function writeSnapshot(chatData, bypass) {
     magic: !!bypass.magic,
     ignoreAll: !!bypass.ignoreAll,
     ignoreGeneric: !!bypass.ignoreGeneric,
+    overrides: (bypass.overrides ?? []).map((o) => ({ ...o })),
     sources: [...bypass.sources],
   };
+}
+
+/** "DR/good", "DR/—", "DR", "fire resistance", "resistance", "hardness". */
+function overrideSubject(o) {
+  const kind = overrideKind(o.mode);
+  if (kind === 'hardness') return 'hardness';
+  if (kind === 'er') return o.type === ANY_TYPE ? 'energy resistance' : `${labelFor(o.type)} resistance`;
+  return o.type === ANY_TYPE ? 'DR' : `DR/${labelFor(o.type)}`;
+}
+
+/** One footnote line for an override, without its source. */
+function overrideNote(o) {
+  const subject = overrideSubject(o);
+  if (!isBypassMode(o.mode)) return `Reduces ${subject} by ${o.amount}`;
+  return o.max === null ? `Ignores ${subject}` : `Ignores ${subject} of ${o.max} or less`;
 }
 
 /** Card footnotes describing what this attack bypasses. */
 export function bypassFootnotes(bypass) {
   if (!hasBypass(bypass)) return [];
   const from = bypass.sources?.length ? ` (${bypass.sources.join(', ')})` : '';
+  const overrideNotes = (bypass.overrides ?? []).map((o) => `${overrideNote(o)}${from}`);
 
-  if (bypass.ignoreAll) return [`Bypasses all damage reduction${from}`];
+  if (bypass.ignoreAll) return [`Bypasses all damage reduction${from}`, ...overrideNotes];
 
   const parts = [];
   if (bypass.magic) parts.push(labelFor(MAGIC_ID));
@@ -240,7 +333,7 @@ export function bypassFootnotes(bypass) {
   const notes = [];
   if (parts.length) notes.push(`Counts as ${parts.join(', ')} for damage reduction${from}`);
   if (bypass.ignoreGeneric) notes.push(`Bypasses DR/—${parts.length ? '' : from}`);
-  return notes;
+  return [...notes, ...overrideNotes];
 }
 
 /* --------------------------------------------------------------------------
@@ -296,6 +389,117 @@ function applyIgnores(app, b) {
 }
 
 /**
+ * Highest ceiling and highest reduction per kind and type. Two sources granting the same
+ * reduction don't add up: unlike the defender side, the attacker has no Stacks switch to
+ * say they should.
+ * @param {DefenseOverride[]} overrides
+ */
+function consolidate(overrides) {
+  const empty = () => ({ dr: new Map(), er: new Map(), hardness: new Map() });
+  const out = { bypass: empty(), reduce: empty() };
+  for (const o of overrides ?? []) {
+    const bypass = isBypassMode(o.mode);
+    const bucket = (bypass ? out.bypass : out.reduce)[overrideKind(o.mode)];
+    if (!bucket) continue;
+    const value = bypass ? (o.max ?? Infinity) : o.amount;
+    bucket.set(o.type, Math.max(bucket.get(o.type) ?? -Infinity, value));
+  }
+  return out;
+}
+
+function rowMatches(orig, row, type, kind) {
+  if (type === ANY_TYPE) return true;
+  if (kind === 'dr' && type === GENERIC_DR) return !!row.hasGeneric;
+  return orig.typeIds.includes(type);
+}
+
+/**
+ * One DR or ER row after the attacker's overrides, recomputed from the row's original state so
+ * re-asserting is idempotent. Same rules as pf1-defense-manager's Defense Override: a bypass
+ * drops a matched "or" or single-type row and narrows an "and" row to its other type, skipping
+ * rows above its ceiling; reductions then lower what is left.
+ * @returns {boolean} whether the row changed
+ */
+function overrideRow(row, kind, bypass, reduce) {
+  if (row.custom) return false; // free text: nothing to match against
+  if (!bypass.size && !reduce.size) return false;
+  const orig = (row._pf1meOrig ??= {
+    value: row.value,
+    typeIds: [...(row.typeIds ?? [])].filter(Boolean),
+  });
+
+  let typeIds = orig.typeIds;
+  let gone = false;
+  for (const [type, max] of bypass) {
+    if (orig.value > max || !rowMatches(orig, row, type, kind)) continue;
+    if (kind === 'er' || type === ANY_TYPE || type === GENERIC_DR || typeIds.length < 2 || row.operator) {
+      gone = true;
+      break;
+    }
+    typeIds = typeIds.filter((t) => t !== type);
+  }
+
+  let value = orig.value;
+  for (const [type, by] of reduce) if (rowMatches(orig, row, type, kind)) value -= by;
+
+  const state = () => `${row.value}|${[...(row.typeIds ?? [])].join()}|${row.active}|${row.disabled}`;
+  const before = state();
+  row.value = Math.max(0, value);
+  if (typeIds !== orig.typeIds) {
+    row.typeIds = new Set(typeIds);
+    row.types = [...typeIds];
+  }
+  if (gone) {
+    row.active = false;
+    row.disabled = true;
+  }
+  return before !== state();
+}
+
+/**
+ * The target's hardness after the attacker's overrides. Only ever switches hardness off; a
+ * reduction that leaves some standing keeps the GM's own toggle.
+ * @returns {boolean} whether it changed
+ */
+function overrideHardness(target, bypass, reduce) {
+  const h = target.hardness;
+  if (!h || (!bypass.size && !reduce.size)) return false;
+  const orig = (h._pf1meOrig ??= { effective: h.effective ?? 0 });
+  if (!orig.effective) return false;
+
+  const ceiling = bypass.size ? Math.max(...bypass.values()) : -Infinity;
+  let effective = orig.effective <= ceiling ? 0 : orig.effective;
+  if (effective) for (const by of reduce.values()) effective -= by;
+  effective = Math.max(0, effective);
+
+  if (effective === h.effective) return false;
+  h.effective = effective;
+  if (effective <= 0) {
+    h.active = false;
+    h.disabled = true;
+  }
+  return true;
+}
+
+/**
+ * Apply the snapshot's DR, ER, and hardness overrides to every target, or just one.
+ * @returns {object[]} the targets that changed
+ */
+function applyOverrides(app, b, only = null) {
+  if (!b.overrides?.length) return [];
+  const { bypass, reduce } = consolidate(b.overrides);
+  const changed = [];
+  for (const target of only ? [only] : [...(app.targets ?? [])]) {
+    let hit = false;
+    for (const row of target.dr ?? []) hit = overrideRow(row, 'dr', bypass.dr, reduce.dr) || hit;
+    for (const row of target.eres ?? []) hit = overrideRow(row, 'er', bypass.er, reduce.er) || hit;
+    hit = overrideHardness(target, bypass.hardness, reduce.hardness) || hit;
+    if (hit) changed.push(target);
+  }
+  return changed;
+}
+
+/**
  * Install the apply-time wrappers. Called once at `setup`.
  *
  * Three seams, all additive:
@@ -329,8 +533,11 @@ export function patchApplyDamage(registerWrapper) {
     const result = wrapped(...args);
     try {
       const b = snapshotFor(this);
-      if (b && applyIgnores(this, b)) {
-        for (const target of [...(this.targets ?? [])]) this._refreshTarget(target.uuid);
+      if (b) {
+        const ignored = applyIgnores(this, b);
+        const overridden = applyOverrides(this, b);
+        const refresh = ignored ? [...(this.targets ?? [])] : overridden;
+        for (const target of refresh) this._refreshTarget(target.uuid);
       }
     } catch (err) {
       console.error('pf1-magic-equipment | DR bypass (ignore) failed', err);
@@ -343,7 +550,9 @@ export function patchApplyDamage(registerWrapper) {
       const b = snapshotFor(this);
       if (b) {
         applyTypeTags(this, b);
-        if (applyIgnores(this, b) && target?.uuid) this._refreshTarget(target.uuid);
+        const ignored = applyIgnores(this, b);
+        const overridden = target ? applyOverrides(this, b, target).length > 0 : false;
+        if ((ignored || overridden) && target?.uuid) this._refreshTarget(target.uuid);
       }
     } catch (err) {
       console.error('pf1-magic-equipment | DR bypass (re-assert) failed', err);

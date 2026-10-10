@@ -61,6 +61,7 @@ Hooks.once('ready', () => {
       //   await api.rollBonus.setAbilities(buff, [{ key: 'Bane', params: { creatureType: 'undead' } }]);
       //   await api.rollBonus.setBypass(buff, { ignoreAll: true });          // Smite Evil
       //   await api.rollBonus.setBypass(buff, { types: ['coldIron', 'good'] });
+      //   await api.rollBonus.setBypass(buff, { mode: 'hardnessBypass', max: '19' });
       rollBonus: {
         getAbilities: getRollBonusAbilities, setAbilities: setRollBonusAbilities,
         getBypass: getRollBonusBypass, setBypass: setRollBonusBypass,

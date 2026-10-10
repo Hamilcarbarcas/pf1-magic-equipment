@@ -3,6 +3,13 @@
 ## Unreleased
 
 ### Added
+- **DR Bypass is now Defense Bypass (magic equipment)**, with a **Mode** list at the top.
+  **Bypass DR as** is the original behavior, and existing bonuses keep it. Six new modes
+  weaken other defenses the attack meets: DR, ER, or Hardness **Bypass** (ignore it,
+  optionally only up to a maximum, so a Hardness Bypass up to 19 works like adamantine)
+  and DR, ER, or Hardness **Reduction** (lower it by an amount). Maximum and Amount accept
+  formulas. The same rules as PF1 Defense Manager's Defense Override, from the attacker's
+  side.
 - Initial scaffold of the Magic Equipment mod (weapons first; armor planned).
 - Embedded **Magic Equipment** section on the weapon item sheet: set the base
   enhancement bonus, add special abilities (category-filtered picker), choose a
