@@ -251,9 +251,27 @@ function bypassPickerNode(config, editable) {
 }
 
 /**
+ * Whether a row's "only if" formula passes, resolved against the bonus's own item. An
+ * empty condition always passes; one that won't resolve fails, so a typo withholds the
+ * ability instead of granting it unconditionally.
+ */
+function rowConditionPasses(source, row) {
+  const formula = String(row?.condition ?? '').trim();
+  if (!formula) return true;
+  const roll = globalThis.pf1?.dice?.RollPF?.safeRollSync?.(formula, source?.getRollData?.() ?? {});
+  if (!roll || roll.err || !Number.isFinite(roll.total)) {
+    const name = getAbility(row.key)?.name ?? row.key;
+    console.error(`pf1-magic-equipment | Weapon Abilities on "${source?.name}": condition "${formula}" for ${name} did not resolve; not applied.`, roll?.err);
+    ui.notifications?.warn(`${source?.name}: condition for ${name} did not resolve; ability not applied.`);
+    return false;
+  }
+  return roll.total !== 0;
+}
+
+/**
  * Read the ability rows configured on an item's Magic Equipment roll-bonus.
  * @param {ItemPF} item
- * @returns {{ category: string, key: string, params: object }[]}
+ * @returns {{ category: string, key: string, params: object, condition?: string }[]}
  */
 export function getRollBonusAbilities(item) {
   const rows = item?.getFlag?.(RB_MODULE_ID, RB_ROWS_KEY);
@@ -263,10 +281,12 @@ export function getRollBonusAbilities(item) {
 /**
  * Set (from a script/macro) the abilities granted by an item's Magic Equipment
  * roll-bonus. Ensures the item is flagged as a bonus source, then writes the rows.
- * Accepts ability keys (strings) or `{ key, params, category? }` entries; unknown
- * keys are kept but warned about. Returns the normalized rows written.
+ * Accepts ability keys (strings) or `{ key, params, category?, condition? }` entries;
+ * unknown keys are kept but warned about. `condition` is a formula resolved against the
+ * bonus's item at use time; the ability applies only when it is nonzero. Returns the
+ * normalized rows written.
  * @param {ItemPF} item the bonus-carrying item (e.g. a buff).
- * @param {(string | { key: string, params?: object, category?: string })[]} entries
+ * @param {(string | { key: string, params?: object, category?: string, condition?: string })[]} entries
  * @returns {Promise<object[]>}
  */
 export async function setRollBonusAbilities(item, entries) {
@@ -276,7 +296,8 @@ export async function setRollBonusAbilities(item, entries) {
     .filter((r) => r.key)
     .map((r) => {
       if (!getAbility(r.key)) console.error(`pf1-magic-equipment | setRollBonusAbilities: unknown ability key "${r.key}".`);
-      return { category: r.category ?? 'all', key: r.key, params: r.params ?? {} };
+      const condition = String(r.condition ?? '').trim();
+      return { category: r.category ?? 'all', key: r.key, params: r.params ?? {}, ...(condition ? { condition } : {}) };
     });
 
   // Ensure roll-bonuses treats this item as a source of the bonus.
@@ -302,33 +323,30 @@ function registerBridge(api) {
     static get journal() { return ''; }
 
     /** @override */
-    static get label() { return 'Magic Equipment Abilities'; }
+    static get label() { return 'Weapon Abilities (magic equipment)'; }
 
     /** @override */
     static get tooltip() {
-      return 'Grant pf1-magic-equipment weapon special abilities to the targeted weapon while this bonus applies. Injected at use-time only — nothing is written to the weapon.';
+      return 'Grant pf1-magic-equipment weapon special abilities to the targeted weapon while this bonus applies, each optionally gated by its own formula. Injected at use-time only; nothing is written to the weapon.';
     }
 
     /** Flag key holding the configured ability rows. Matches RB_ROWS_KEY. */
     static get #rowsKey() { return `${this.key}-rows`; }
 
-    /** The configured rows: [{ category, key, params }]. */
+    /** The configured rows that name an ability: [{ category, key, params, condition? }]. */
     static #rows(source) {
-      return getRollBonusAbilities(source);
-    }
-
-    /** The distinct ability keys configured on this bonus. */
-    static #abilityKeys(source) {
-      const keys = [];
-      for (const row of this.#rows(source)) if (row?.key && !keys.includes(row.key)) keys.push(row.key);
-      return keys;
+      return getRollBonusAbilities(source).filter((row) => row?.key);
     }
 
     /** @override */
     static getHints(source) {
-      const keys = this.#abilityKeys(source);
-      if (!keys.length) return ['Magic Equipment: (none set)'];
-      return [`Magic Equipment: ${keys.map((k) => getAbility(k)?.name ?? k).join(', ')}`];
+      const rows = this.#rows(source);
+      if (!rows.length) return ['Magic Equipment: (none set)'];
+      const names = rows.map((row) => {
+        const name = getAbility(row.key)?.name ?? row.key;
+        return row.condition ? `${name} (conditional)` : name;
+      });
+      return [`Magic Equipment: ${names.join(', ')}`];
     }
 
     /** @override */
@@ -341,7 +359,7 @@ function registerBridge(api) {
       child.classList.add('pf1me-section', 'pf1me-rb-picker');
       // A grant is injected into an attack, so only the weapon catalog applies here
       // regardless of what kind of item carries the buff.
-      child.innerHTML = abilityPickerHtml(this.#rows(item), `rb-${item.id}`, isEditable, ['weapon']);
+      child.innerHTML = abilityPickerHtml(getRollBonusAbilities(item), `rb-${item.id}`, isEditable, ['weapon'], { conditions: true });
 
       // Place it in the roll-bonuses container on the sheet's Advanced tab, using
       // roll-bonuses' own helper — appending to the raw sheet root instead lands the
@@ -364,11 +382,13 @@ function registerBridge(api) {
     /**
      * @override
      * Fires at the start of a use for every bonus whose targeting matches the
-     * action. We grant the configured abilities to that action for this use.
+     * action. Grants each configured ability whose condition passes, with its params.
      */
     static actionUseProcess(source, actionUse) {
-      const keys = this.#abilityKeys(source);
-      if (keys.length) addGrant(actionUse.action, keys);
+      const granted = this.#rows(source)
+        .filter((row) => rowConditionPasses(source, row))
+        .map((row) => ({ key: row.key, params: row.params ?? {} }));
+      if (granted.length) addGrant(actionUse.action, granted);
     }
   }
 

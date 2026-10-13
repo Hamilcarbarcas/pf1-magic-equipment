@@ -24,12 +24,20 @@ import {
  * ------------------------------------------------------------------------ */
 const GRANTS = new Map();
 
-/** Add granted ability keys for an action's current use. */
-export function addGrant(action, keys) {
-  if (!action || !keys?.length) return;
-  let set = GRANTS.get(action);
-  if (!set) GRANTS.set(action, (set = new Set()));
-  for (const k of keys) set.add(k);
+/**
+ * Add granted abilities for an action's current use (action -> Map<key, params>).
+ * Entries are ability keys or `{ key, params }`; the first grant of a key wins.
+ * @param {object} action the in-flight ItemAction.
+ * @param {(string | { key: string, params?: object })[]} entries
+ */
+export function addGrant(action, entries) {
+  if (!action || !entries?.length) return;
+  let map = GRANTS.get(action);
+  if (!map) GRANTS.set(action, (map = new Map()));
+  for (const e of entries) {
+    const { key, params } = typeof e === 'string' ? { key: e } : (e ?? {});
+    if (key && !map.has(key)) map.set(key, params ?? {});
+  }
 }
 
 /**
@@ -97,9 +105,9 @@ function conditionalCheckerFor(action, enabledIds) {
 }
 
 function grantedAbilities(action) {
-  const set = GRANTS.get(action);
+  const map = GRANTS.get(action);
   // The roll-bonuses bridge only ever grants from the weapon catalog.
-  return set ? [...set].map((key) => ({ key, kind: 'weapon', params: {} })) : [];
+  return map ? [...map].map(([key, params]) => ({ key, kind: 'weapon', params })) : [];
 }
 
 /**

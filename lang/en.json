@@ -12,6 +12,8 @@
   "PF1ME.Abilities.Remove": "Remove ability",
   "PF1ME.Abilities.PickCategory": "Category",
   "PF1ME.Abilities.PickAbility": "Ability",
+  "PF1ME.Abilities.Condition": "Only if",
+  "PF1ME.Abilities.ConditionAlways": "Always (formula: nonzero = on)",
   "PF1ME.Category.All": "All",
   "PF1ME.Category.Fixed": "Fixed cost",
   "PF1ME.Material.Label": "Special Material",

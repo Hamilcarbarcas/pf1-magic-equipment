@@ -3,6 +3,13 @@
 ## Unreleased
 
 ### Added
+- **Magic Equipment Abilities is now Weapon Abilities (magic equipment)**, and each
+  ability on it has an optional **Only if** formula, resolved against the bonus's item at
+  use time. The ability is granted only while the formula is nonzero, so one buff can
+  grant *flaming* at 5th level and *flaming burst* at 12th. `rollBonus.setAbilities`
+  accepts a `condition` per entry.
+- Abilities granted through roll-bonuses now keep their parameters, so a granted
+  **Bane** applies against its designated foe instead of only adding a footnote.
 - **DR Bypass is now Defense Bypass (magic equipment)**, with a **Mode** list at the top.
   **Bypass DR as** is the original behavior, and existing bonuses keep it. Six new modes
   weaken other defenses the attack meets: DR, ER, or Hardness **Bypass** (ignore it,

@@ -103,6 +103,21 @@ you can also grant these abilities to a targeted weapon through its targeting
 system — e.g. a buff that makes a weapon *axiomatic* while active. The mod is fully
 functional without it.
 
+The bonus is **Weapon Abilities (magic equipment)**. Each ability on it has an
+optional **Only if** formula, resolved against the bonus's own item (so `@item.level`
+and the actor's `@classes`, `@attributes` and so on are available) each time the weapon
+is used. The ability is granted only when the formula is nonzero; leave it blank to
+always grant it. A formula that fails to resolve withholds the ability and warns. This
+lets one buff change what it grants as its owner levels, e.g. a class feature that
+gives *flaming* at 5th level and *flaming burst* at 12th:
+
+| Ability | Only if |
+| --- | --- |
+| Flaming | `lt(@classes.immolator.level, 12)` |
+| Flaming Burst | `gte(@classes.immolator.level, 12)` |
+
+(*Flaming burst* already includes *flaming*'s +1d6, so the two are made exclusive.)
+
 Granted abilities reproduce the mod's *use-time* effects — bonus damage, attack/crit
 bonuses, haste, damage-type changes, Merciful's "deal lethal" toggle, condition-on-hit
 enrichers, and alignment-based **DR bypass** (a granted *holy* weapon counts as good
@@ -182,8 +197,8 @@ api.itemKind(item);                     // 'weapon' | 'armor' | 'shield' | null
 > exist as weapon, armor and shield abilities with different prices and effects — so
 > anything beyond the weapon catalog needs the kind.
 
-Configure the roll-bonuses **Magic Equipment Abilities** bonus on an item from a
-script — e.g. an "on create/use" script on a buff that lets the player pick an
+Configure the roll-bonuses **Weapon Abilities (magic equipment)** bonus on an item
+from a script — e.g. an "on create/use" script on a buff that lets the player pick an
 ability and configures the bonus to it:
 
 ```js
@@ -195,8 +210,14 @@ await api.rollBonus.setAbilities(item, ["Flaming"]);
 // with parameters (e.g. Bane's designated foe):
 await api.rollBonus.setAbilities(item, [{ key: "Bane", params: { creatureType: "undead" } }]);
 
+// with an "Only if" formula per ability:
+await api.rollBonus.setAbilities(item, [
+  { key: "Flaming", condition: "lt(@classes.immolator.level, 12)" },
+  { key: "FlamingBurst", condition: "gte(@classes.immolator.level, 12)" },
+]);
+
 // read back what's configured:
-api.rollBonus.getAbilities(item);   // -> [{ category, key, params }]
+api.rollBonus.getAbilities(item);   // -> [{ category, key, params, condition? }]
 ```
 
 `setAbilities` also ensures the item is flagged as a bonus source, so a plain buff

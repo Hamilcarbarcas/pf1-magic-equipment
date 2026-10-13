@@ -55,10 +55,11 @@ Hooks.once('ready', () => {
       //   api.listAbilities('armor')            // omit the kind for every catalog
       //   api.getAbility('GhostTouch', 'shield')
       listAbilities, getAbility, itemKind, catalogKinds,
-      // configure the roll-bonuses "Magic Equipment Abilities" bonus from a script:
+      // configure the roll-bonuses "Weapon Abilities (magic equipment)" bonus from a script:
       //   const api = game.modules.get('pf1-magic-equipment').api;
       //   await api.rollBonus.setAbilities(buff, ['Flaming']);            // by key
       //   await api.rollBonus.setAbilities(buff, [{ key: 'Bane', params: { creatureType: 'undead' } }]);
+      //   await api.rollBonus.setAbilities(buff, [{ key: 'FlamingBurst', condition: 'gte(@item.level, 12)' }]);
       //   await api.rollBonus.setBypass(buff, { ignoreAll: true });          // Smite Evil
       //   await api.rollBonus.setBypass(buff, { types: ['coldIron', 'good'] });
       //   await api.rollBonus.setBypass(buff, { mode: 'hardnessBypass', max: '19' });

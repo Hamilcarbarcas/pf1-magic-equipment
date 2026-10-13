@@ -31,7 +31,7 @@ const gpStr = (n) => `${gp.format(Math.round(n || 0))} gp`;
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 /** HTML for a single ability row. `uid` disambiguates datalist ids across pickers. */
-function abilityRowHtml(row, index, uid, disabled, kinds) {
+function abilityRowHtml(row, index, uid, disabled, kinds, conditions) {
   const cat = row.category ?? 'all';
   const kind = row.kind ?? kinds[0];
   const catOpts = categoryOptionsHtml(kinds, row);
@@ -62,6 +62,15 @@ function abilityRowHtml(row, index, uid, disabled, kinds) {
       </select>`;
   }).join('');
 
+  // `formula` gets Little Helper's live `= value` readout.
+  const condHtml = conditions
+    ? `<div class="pf1me-cond-row">
+        <label>${esc(loc('PF1ME.Abilities.Condition'))}</label>
+        <input type="text" class="pf1me-input pf1me-cond formula" data-action="ability-condition"
+               value="${esc(row.condition ?? '')}" placeholder="${esc(loc('PF1ME.Abilities.ConditionAlways'))}" ${disabled}/>
+      </div>`
+    : '';
+
   return `
     <div class="pf1me-ability-row" data-index="${index}">
       <select class="pf1me-input pf1me-cat" data-action="ability-category" ${disabled}>${catOpts}</select>
@@ -72,6 +81,7 @@ function abilityRowHtml(row, index, uid, disabled, kinds) {
       ${hb}
       ${paramHtml}
       <a class="pf1me-remove" data-action="remove-ability" title="${esc(loc('PF1ME.Abilities.Remove'))}"><i class="fas fa-times"></i></a>
+      ${condHtml}
     </div>`;
 }
 
@@ -79,10 +89,12 @@ function abilityRowHtml(row, index, uid, disabled, kinds) {
  * The full picker markup: a labelled header with add button, then the rows.
  * @param {string[]} kinds the ability catalogs this item may draw from (see
  *   `config.catalogKinds`); the first is the default for a new row.
+ * @param {{ conditions?: boolean }} [options] `conditions` adds a per-row formula
+ *   that gates the ability (roll-bonuses grants only).
  */
-export function abilityPickerHtml(abilities, uid, editable, kinds = ['weapon']) {
+export function abilityPickerHtml(abilities, uid, editable, kinds = ['weapon'], { conditions = false } = {}) {
   const disabled = editable ? '' : 'disabled';
-  const rows = (abilities ?? []).map((row, i) => abilityRowHtml(row, i, uid, disabled, kinds)).join('');
+  const rows = (abilities ?? []).map((row, i) => abilityRowHtml(row, i, uid, disabled, kinds, conditions)).join('');
   return `
     <div class="pf1me-abilities" data-uid="${esc(uid)}">
       <div class="pf1me-abilities-head">
@@ -135,7 +147,8 @@ export function wireAbilityPicker(root, { getAbilities, setAbilities, editable, 
       // Value is `kind:category` — one control picks both, so changing either
       // resets the row's ability (the key may not exist in the new catalog).
       const [kind, category] = String(target.value).split(':');
-      abilities[idx] = { kind, category, key: '', params: {} };
+      const { condition } = abilities[idx];
+      abilities[idx] = { kind, category, key: '', params: {}, ...(condition ? { condition } : {}) };
       await setAbilities(abilities);
     } else if (action === 'ability-key') {
       const row = abilities[idx];
@@ -150,6 +163,10 @@ export function wireAbilityPicker(root, { getAbilities, setAbilities, editable, 
       const params = { ...(abilities[idx].params ?? {}) };
       if (target.value) params[pkey] = target.value; else delete params[pkey];
       abilities[idx].params = params;
+      await setAbilities(abilities);
+    } else if (action === 'ability-condition') {
+      const condition = String(target.value ?? '').trim();
+      if (condition) abilities[idx].condition = condition; else delete abilities[idx].condition;
       await setAbilities(abilities);
     }
   });
