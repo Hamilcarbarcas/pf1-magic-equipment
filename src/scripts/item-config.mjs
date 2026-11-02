@@ -5,6 +5,7 @@
 import { MODULE_ID, FLAGS, defaultConfig, loc, MERCIFUL_CONDITIONAL, itemKind } from './config.mjs';
 import { computeDerived, buildMagicName } from './calc.mjs';
 import { getHandler } from './ability-handlers.mjs';
+import { getMaterial } from './data.mjs';
 
 /** Read the merged config off an item (defaults ∪ stored). */
 export function getConfig(item) {
@@ -109,6 +110,54 @@ export async function resolveBase(item) {
 }
 
 /**
+ * libWrapper WRAPPER for `ItemPF#_preCreate`. PF1 gives every Change a new id when an
+ * item lands on an actor; re-key `applied.changeIds` by position (PF1 keeps the order)
+ * so a later apply on the actor still finds and replaces the Changes it added.
+ */
+export async function remapAppliedChangeIds(wrapped, ...args) {
+  const before = (this._source.system?.changes ?? []).map((c) => c._id);
+  const result = await wrapped(...args);
+  const ids = this._source.flags?.[MODULE_ID]?.[FLAGS.applied]?.changeIds;
+  const after = (this._source.system?.changes ?? []).map((c) => c._id);
+  if (Array.isArray(ids) && ids.length && before.length === after.length) {
+    const moved = new Map(before.map((id, i) => [id, after[i]]));
+    this.updateSource({ [`flags.${MODULE_ID}.${FLAGS.applied}.changeIds`]: ids.map((id) => moved.get(id) ?? id) });
+  }
+  return result;
+}
+
+const DEFENSE_MANAGER_ID = 'pf1-defense-manager';
+/** Marks the defense-manager entry we own, so a re-apply replaces only ours. */
+const ARMOR_DR_MARK = 'pf1meMaterial';
+
+/**
+ * Material armor DR (adamantine, Kanthaal) as a pf1-defense-manager DR/– entry on the
+ * armor; that module folds it into the actor's DR while the armor is worn. Written even
+ * if that module is off, where it's an inert flag. See DESIGN §13.4.
+ */
+function writeArmorDR(item, update, d) {
+  // Read the raw source: getFlag throws for a module scope that isn't active.
+  const raw = item._source?.flags?.[DEFENSE_MANAGER_ID]?.defenses;
+  let defs = [];
+  if (typeof raw === 'string') {
+    try { defs = JSON.parse(raw); } catch { defs = []; }
+  } else if (raw) {
+    defs = Array.isArray(raw) ? [...raw] : Object.values(raw);
+  }
+  const kept = defs.filter((e) => !e?.[ARMOR_DR_MARK]);
+  if (!(d.armorDR > 0) && kept.length === defs.length) return;
+  if (d.armorDR > 0) {
+    const name = loc('PF1ME.Material.ArmorDR', { material: getMaterial(d.materialKey)?.name ?? '' });
+    kept.push({
+      name, enabled: true, category: 'dr', amount: String(d.armorDR), types: ['', ''],
+      operator: true, stacking: false, [ARMOR_DR_MARK]: true,
+    });
+  }
+  // Stored as a JSON string, as pf1-defense-manager does, to dodge Foundry's deep merge.
+  update.flags[DEFENSE_MANAGER_ID] = { defenses: JSON.stringify(kept) };
+}
+
+/**
  * Apply the config: recompute the easy-bucket from the base and write the
  * weapon's native fields. Ability *effects* (the hard bucket) are handled
  * elsewhere at use-time and are intentionally not touched here.
@@ -138,20 +187,26 @@ export async function applyToItem(item) {
       hardness: d.hardness,
       hp: { base: d.hpBase },
       unidentified: { price: d.unidentifiedPrice },
-      material: { normal: { value: d.materialKey }, addon: d.addonKey ? [d.addonKey] : [] },
     },
     flags: { [MODULE_ID]: { [FLAGS.applied]: { abilities: appliedAbilities } } },
   };
+  const material = { normal: { value: d.materialKey }, addon: d.addonKey ? [d.addonKey] : [] };
 
   // The enhancement bonus lives in a different place per kind. For a shield it is
   // an AC bonus only: it is deliberately NOT carried into the bash attack, which
   // needs its own weapon enchantment (see config.catalogKinds).
   if (kind === 'weapon') {
     update.system.enh = d.enh > 0 ? d.enh : null;
+    update.system.material = material;
   } else {
-    update.system.armor = { enh: d.enh, value: d.armorValue, dex: d.maxDex, acp: d.acp };
+    // Armor and shields keep their material under `system.armor`. Earlier versions
+    // wrote `system.material`, which PF1's getter falls back to; drop that stray copy.
+    update.system.armor = { enh: d.enh, value: d.armorValue, dex: d.maxDex, acp: d.acp, material };
     update.system.spellFailure = d.asf;
+    if (item._source?.system?.material !== undefined) update.system['-=material'] = null;
   }
+
+  writeArmorDR(item, update, d);
 
   // Native writes onto the item's actions — weapons, and a shield's bash action,
   // which picks up weapon-catalog abilities:
@@ -174,7 +229,8 @@ export async function applyToItem(item) {
   const wantMerciful = weaponRows.some((a) => a.key === 'Merciful');
   const prevMerciful = prevApplied.merciful === true;
 
-  // Effect-note enrichers (condition-on-hit) and desired boolean flags from handlers.
+  // Effect-note enrichers (condition-on-hit) from weapon handlers; boolean flags from any
+  // handler (Fortuitous on a weapon, Wild on armour or a shield).
   const newEffectNotes = [];
   const desiredFlags = [];
   for (const { key, kind: k } of weaponRows) {
@@ -183,7 +239,10 @@ export async function applyToItem(item) {
       const t = typeof h.effectNote === 'function' ? h.effectNote() : h.effectNote;
       if (t) newEffectNotes.push(t);
     }
-    if (h?.booleanFlag) desiredFlags.push(h.booleanFlag);
+  }
+  for (const { key, kind: k } of appliedAbilities) {
+    const flag = getHandler(key, k)?.booleanFlag;
+    if (flag && !desiredFlags.includes(flag)) desiredFlags.push(flag);
   }
   const prevEffectNotes = prevApplied.effectNotes ?? [];
 
@@ -234,6 +293,26 @@ export async function applyToItem(item) {
     update.system.contextNotes = [...existing, ...newContextNotes];
   }
   update.flags[MODULE_ID][FLAGS.applied].changeIds = newChanges.map((c) => c._id);
+
+  // Actions an ability adds (Animated's Animate, §12.9). Each is marked with the ability's
+  // `kind:key` in its own flags, so a re-apply keeps the existing action (and its id, and any
+  // edits to it), adds a missing one, and removes one whose ability is gone. Hand-made actions
+  // carry no mark and are never touched.
+  const wantActions = new Map();
+  for (const { key, kind: k } of appliedAbilities) {
+    const [data] = getHandler(key, k)?.itemActions?.(cfg) ?? [];
+    if (data) wantActions.set(`${k}:${key}`, data);
+  }
+  const markOf = (a) => a?.flags?.[MODULE_ID]?.ability ?? null;
+  const currentActions = update.system.actions ?? item.toObject().system?.actions ?? [];
+  if (wantActions.size || currentActions.some(markOf)) {
+    const actions = currentActions.filter((a) => !markOf(a) || wantActions.has(markOf(a)));
+    for (const [mark, data] of wantActions) {
+      if (actions.some((a) => markOf(a) === mark)) continue;
+      actions.push({ ...data, _id: foundry.utils.randomID(16), flags: { ...(data.flags ?? {}), [MODULE_ID]: { ability: mark } } });
+    }
+    update.system.actions = actions;
+  }
   update.flags[MODULE_ID][FLAGS.applied].contextNoteTexts = newContextNotes.map((n) => n.text);
 
   // Optional caster level + aura. Both are recomputed from scratch, so removing the

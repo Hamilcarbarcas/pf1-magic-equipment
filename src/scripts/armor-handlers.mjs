@@ -6,6 +6,7 @@
 //
 //   itemChanges(cfg) → [{ formula, target, type, flavor }]   a real PF1 Change
 //   itemContextNotes(cfg) → [{ target, text }]               a situational reminder
+//   itemActions(cfg) → [actionData]                          an action added on Apply (§12.9)
 //
 // Both are written to the item on Apply and gathered natively by PF1 while the item
 // is equipped, so no hook or wrapper is involved.
@@ -17,6 +18,7 @@
 // pick up handlers individually later. See DESIGN.md §12.4 buckets 2 and 3.
 
 import { registerHandler } from './ability-handlers.mjs';
+import { animateAction } from './animated.mjs';
 
 /* --------------------------------------------------------------------------
  * Declarative helpers
@@ -107,7 +109,11 @@ const NOTES = [
   ...both((k) => anote(k, 'GhostTouch', 'ac', 'Ghost Touch — the armour and enhancement bonus apply against incorporeal touch attacks.')),
   ...both((k) => anote(k, 'Impervious', 'misc', 'Impervious — double the enhancement bonus to hardness and hit points.')),
   ...both((k) => anote(k, 'Mirrored', 'ac', 'Mirrored — can be used as a mirror; aids against gaze attacks and creatures that rely on sight.')),
-  ...both((k) => anote(k, 'Wild', 'ac', 'Wild — the armour bonus continues to apply while the wearer is in a wild-shape form.')),
+  // The `wild` boolean flag keeps it equipped through a form that melds gear (astora-mod polymorph).
+  ...both((k) => ({
+    ...anote(k, 'Wild', 'ac', 'Wild — the armour bonus continues to apply while the wearer is in a wild-shape form.'),
+    booleanFlag: 'wild',
+  })),
   ...both((k) => anote(k, 'Defiant', 'ac', 'Defiant — +2 (rising with the enhancement bonus) against the designated creature type.')),
   anote('armor', 'Amorphous', 'cmd', 'Amorphous — +5 competence to CMD against grapple.'),
   anote('armor', 'MentalFocus', 'concentration', 'Mental Focus — +2 enhancement on concentration checks.'),
@@ -128,7 +134,10 @@ const NOTES = [
   anote('shield', 'Guarding', 'ac', "Guarding — transfer some or all of the shield's enhancement bonus to an adjacent ally's AC."),
   anote('shield', 'GreaterGuarding', 'ac', "Greater Guarding — as Guarding, but any number of adjacent allies gain the shield's bonus."),
   anote('shield', 'Assiduous', 'ac', 'Assiduous — extra AC while fighting defensively or taking total defence.'),
-  anote('shield', 'Animated', 'ac', 'Animated — as a move action, the shield defends on its own for 4 rounds, leaving the hand free.'),
+  {
+    ...anote('shield', 'Animated', 'ac', 'Animated — Animate (move action): the shield defends on its own for 4 rounds, leaving the hand free; then 4 rounds before it can be animated again.'),
+    itemActions: () => [animateAction()],
+  },
   anote('shield', 'Bashing', 'attack', 'Bashing — a shield bash deals damage as a weapon two size categories larger.'),
   anote('shield', 'Ramming', 'attack', 'Ramming — bonuses on shield bashes and bull rush attempts made with the shield.'),
   anote('shield', 'Mastering', 'attack', 'Mastering — apply your highest weapon-training bonus to attacks with this shield.'),

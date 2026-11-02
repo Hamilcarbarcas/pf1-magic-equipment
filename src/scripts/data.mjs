@@ -11,7 +11,8 @@ import { WEAPON_ABILITIES } from '../data/weapon-abilities.mjs';
 import { ARMOR_ABILITIES } from '../data/armor-abilities.mjs';
 import { SHIELD_ABILITIES } from '../data/shield-abilities.mjs';
 import { ENH_VALUES } from '../data/enh-values.mjs';
-import { HOMEBREW_ABILITIES, HOMEBREW_MATERIAL_IDS } from '../data/homebrew.mjs';
+import { HOMEBREW_ABILITIES, HOMEBREW_MATERIAL_IDS, HOMEBREW_MATERIAL_TRAITS } from '../data/homebrew.mjs';
+import { MATERIAL_TRAITS } from '../data/material-traits.mjs';
 import { showHomebrew } from './settings.mjs';
 
 /** @typedef {import('../data/weapon-abilities.mjs').WEAPON_ABILITIES[number]} Ability */
@@ -119,6 +120,18 @@ export function masterworkBaseCost(kind = 'weapon') {
 export function getMaterial(key) {
   if (!key) return null;
   return globalThis.pf1?.registry?.materials?.get(key) ?? null;
+}
+
+const TRAITS = { ...MATERIAL_TRAITS, ...HOMEBREW_MATERIAL_TRAITS };
+
+/**
+ * Rules for a material that the registry can't hold (see `material-traits.mjs`).
+ * Takes a registry id or Material; returns {} for none.
+ * @returns {import('../data/material-traits.mjs').MaterialTraits}
+ */
+export function materialTraits(mat) {
+  const id = typeof mat === 'string' ? mat : (mat?.id ?? mat?._id);
+  return (id && TRAITS[id]) || {};
 }
 
 /** Whether a material is one of ours rather than the system's. */

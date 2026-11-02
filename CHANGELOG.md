@@ -3,6 +3,23 @@
 ## Unreleased
 
 ### Added
+- **Wild armor and shields stay equipped through a shapechange.** Apply now sets the item's `wild` boolean flag,
+  which astora-mod's polymorph forms leave on instead of melding. Re-apply existing wild armor and shields to add it.
+- **Animated shields** get an **Animate** action (move action) on Apply. Using it puts
+  a 4-round **Animated** buff on the wielder with the boolean flag `animatedShield`,
+  which PF1 Equipment Profiles reads to free the shield's hand. When it ends, the shield
+  can't be animated again for 4 rounds. Re-apply existing animated shields to add the
+  action.
+- **Kanthaal Steel** (homebrew) now has its full rules: hardness 20, half weight,
+  mithral's armor adjustments (spell failure no lower than 5%), armor DR, a built-in
+  +1 enhancement bonus on weapons, and counting as adamantine, cold iron, and mithral
+  against DR and hardness. It has no set price, so Apply writes 0 gp; the cost readout
+  still shows what the enchantments cost, including Kanthaal's surcharge.
+- **Mithral and Kanthaal armor counts as one category lighter** for speed and other
+  limits, while proficiency still uses the real category.
+- **Adamantine and Kanthaal armor grant DR** (1/– light, 2/– medium, 3/– heavy, by the
+  armor's real category) through PF1 Defense Manager. Re-apply existing adamantine
+  armor to add it.
 - **Magic Equipment Abilities is now Weapon Abilities (magic equipment)**, and each
   ability on it has an optional **Only if** formula, resolved against the bonus's item at
   use time. The ability is granted only while the formula is nonzero, so one buff can
@@ -147,8 +164,7 @@
 - **Homebrew content is now marked and gated.** An **Include homebrew content**
   setting (off by default) controls whether non-RAW abilities and materials appear
   in the pickers; anything already applied to an item keeps working regardless, and
-  is flagged in the picker. Kanthaal Steel is included as a homebrew material —
-  **its numbers are placeholders**.
+  is flagged in the picker. Kanthaal Steel is included as a homebrew material.
 - **Pricing fixes** (these affected weapons too):
   - Materials that list both a flat price and a per-pound price (mithral) no longer
     charge both. A mithral chain shirt priced at 16,650 gp instead of 4,000 gp.
@@ -170,6 +186,13 @@
   buff whose create/use script lets the player pick an ability), and
   `rollBonus.setBypass(item, config)`/`getBypass(item)` plus `bypass.choices()` for the
   DR Bypass bonus.
+
+### Fixed
+- Armor and shields now store their special material where PF1 keeps it, so the
+  system's own material dropdown shows it. Re-apply existing armor to move it.
+- An item configured in the sidebar or a compendium and then added to an actor no longer
+  doubles its ability Changes when applied again. PF1 gives Changes new ids when an item
+  lands on an actor, so the mod lost track of the ones it had added.
 
 ### Credits
 - Enhancement/pricing logic adapted from **pf1-auto-forge**.

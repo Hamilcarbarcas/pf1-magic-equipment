@@ -24,7 +24,7 @@
 
 import { MODULE_ID } from './config.mjs';
 import { getHandler } from './ability-handlers.mjs';
-import { getAbility } from './data.mjs';
+import { getAbility, materialTraits } from './data.mjs';
 
 /** Chat-message flag key holding the use-time snapshot. */
 export const BYPASS_FLAG = 'bypass';
@@ -252,8 +252,22 @@ export function clearBypassGrants(action) {
  * ------------------------------------------------------------------------ */
 
 /**
- * The full bypass for a use: every active ability's `bypass(ctx)` contribution plus
- * anything granted by the roll-bonuses bonus.
+ * What the attack's own material counts as beyond PF1's single `treatedAs` slot
+ * (Kanthaal: adamantine, cold iron, mithral). Adamantine here also defeats hardness
+ * under 20, through `applyTypeTags`.
+ * @param {object} action
+ * @returns {object|null} a contribution for `mergeBypass`
+ */
+function materialBypass(action) {
+  const mat = globalThis.pf1?.registry?.materials?.get(action?.normalMaterial);
+  const countsAs = materialTraits(mat).countsAs;
+  if (!countsAs?.length) return null;
+  return { materials: countsAs, sources: [mat.name ?? mat.id] };
+}
+
+/**
+ * The full bypass for a use: every active ability's `bypass(ctx)` contribution, what
+ * the weapon's material counts as, and anything granted by the roll-bonuses bonus.
  * @param {{key: string, params: object}[]} abilities  active abilities (applied + granted)
  * @param {object} ctx  handler context ({ item, action, actor, target, … })
  * @returns {BypassDescriptor}
@@ -273,6 +287,7 @@ export function collectBypass(abilities, ctx) {
     }
   }
 
+  mergeBypass(out, materialBypass(ctx?.action));
   mergeBypass(out, grantedBypass(ctx?.action));
 
   return out;

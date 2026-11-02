@@ -27,6 +27,8 @@
   "PF1ME.Cost.Material": "Material",
   "PF1ME.Cost.Masterwork": "Masterwork",
   "PF1ME.Cost.Enhancement": "Enhancement",
+  "PF1ME.Cost.Priceless": "Priceless material: value set to 0",
+  "PF1ME.Material.ArmorDR": "{material} armor",
   "PF1ME.Apply": "Apply",
   "PF1ME.Warn.OverEnh": "Total enhancement equivalent exceeds +10.",
   "PF1ME.Warn.Incompatible": "This ability may not be compatible with this weapon.",

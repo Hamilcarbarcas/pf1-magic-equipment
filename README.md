@@ -70,9 +70,43 @@ abilities, and any weapon ability you add applies to its shield bash. The shield
 enhancement bonus is an AC bonus and does not carry into the bash — that needs its
 own enchantment, which isn't modelled.
 
+An **animated** shield gets an **Animate** action (a move action) when you Apply.
+Using it puts an **Animated** buff on the wielder for 4 rounds, with the boolean flag
+`animatedShield`. Turning the buff off (grasping the shield), or letting it run out,
+removes it, and the shield can't be animated again for 4 rounds. Animate also refuses
+while the shield is already animated or isn't equipped. With PF1 Equipment Profiles, the shield needs no hand
+while the buff lasts, and you're asked to re-grab or drop it when it ends.
+
 Abilities that don't have an implementation yet still price, name and catalogue
 correctly; on weapons they add a short footnote to the attack card describing what
 they do.
+
+### Special materials
+
+Beyond the price, weight, hardness and armor numbers Apply writes, a few materials
+carry rules of their own:
+
+- **Mithral armor** counts as one category lighter (heavy as medium, medium as light)
+  for speed and other limits. Proficiency still uses the real category. This applies
+  whether or not the armor went through Apply.
+- **Adamantine armor** grants DR 1/– (light), 2/– (medium) or 3/– (heavy). Apply adds
+  it as an entry in the armor's damage reduction list, which needs **PF1 Defense
+  Manager**. Shields don't get DR.
+
+**Kanthaal Steel** (homebrew, shown when *Include homebrew content* is on) combines
+mithral, adamantine and cold iron:
+
+- Hardness 20, 40 hit points per inch, half weight, always masterwork.
+- Armor and shields: mithral's adjustments (armor check penalty −3, maximum Dex +2,
+  spell failure −10%, but not below 5%). Armor also counts one category lighter and
+  gets adamantine's DR, by its real category. Shields get no DR.
+- Weapons: a +1 enhancement bonus to attack and damage that doesn't stack with any
+  other enhancement bonus and doesn't make the weapon magic. They count as adamantine
+  (ignoring hardness below 20), cold iron and mithral against damage reduction.
+- Price: it has none, so Apply sets the item's value to 0. The cost readout still
+  shows what the enchantments would cost: +2,000 gp per point on armor and +4,000 gp
+  per point on weapons, and fixed-cost abilities cost 50% more.
+- Not yet modelled: the +50% hit points, crafting and rarity.
 
 ## Settings
 

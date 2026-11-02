@@ -2,7 +2,7 @@
 // and the "easy-bucket" derived stats. No Foundry document writes happen here —
 // callers feed in a base snapshot and the config, and get numbers back.
 
-import { getAbility, enhBandCost, masterworkBaseCost, getMaterial } from './data.mjs';
+import { getAbility, enhBandCost, masterworkBaseCost, getMaterial, materialTraits } from './data.mjs';
 import { MAX_ENH_EQUIVALENT, itemKind, loc } from './config.mjs';
 import { isListedMasterworkMaterial } from './settings.mjs';
 
@@ -138,6 +138,7 @@ export function computeCost({ item, base, config }) {
   const kind = itemKind(item) ?? 'weapon';
   const mwkBase = masterworkBaseCost(kind);
   const mat = getMaterial(config.materialKey);
+  const traits = materialTraits(mat);
   const basePrice = base.price || 0;
   const baseWeight = base.weight || 0;
 
@@ -164,14 +165,20 @@ export function computeCost({ item, base, config }) {
   const { totalEquivalent, byTable, fixed } = enhancementEquivalent(config, kind);
   const band = Object.entries(byTable)
     .reduce((sum, [table, eq]) => sum + enhBandCost(eq, table), 0);
-  const fixedCost = fixed.reduce((sum, a) => sum + (a.priceMod || 0), 0);
+  const fixedCost = fixed.reduce((sum, a) => sum + (a.priceMod || 0), 0) * (traits.fixedCostMultiplier ?? 1);
   const enchanting = (config.enh > 0) || (config.abilities?.length > 0);
   // The registry only carries an enchanting surcharge for weapons (cold iron's
   // +2,000 gp); armor and shields have no equivalent entry.
   const enhSurcharge = (enchanting && kind === 'weapon') ? (mat?.price?.enhancement?.weapon ?? 0) : 0;
-  const enhancementLine = band + fixedCost + enhSurcharge;
+  // Per-point surcharge (Kanthaal): linear in each pricing table's equivalent.
+  const perBonus = traits.enchantPerBonus ?? {};
+  const perBonusSurcharge = Object.entries(byTable)
+    .reduce((sum, [table, eq]) => sum + (perBonus[table] ?? 0) * Math.max(0, eq), 0);
+  const enhancementLine = band + fixedCost + enhSurcharge + perBonusSurcharge;
 
-  const total = basePrice + materialLine + mwkLine + enhancementLine;
+  // A priceless material still shows what the enchantments cost, but the item is worth 0.
+  const priceless = traits.priceless === true;
+  const total = priceless ? 0 : basePrice + materialLine + mwkLine + enhancementLine;
   const currentPrice = item?.system?.price ?? 0;
 
   const warnings = [];
@@ -188,6 +195,7 @@ export function computeCost({ item, base, config }) {
     },
     effectiveMasterwork,
     totalEquivalent,
+    priceless,
     warnings,
   };
 }
@@ -291,6 +299,7 @@ export function buildMagicName({ base, config, kind = 'weapon' }) {
 export function computeDerived({ item, base, config }) {
   const kind = itemKind(item) ?? 'weapon';
   const mat = getMaterial(config.materialKey);
+  const traits = materialTraits(mat);
   const addonMat = getMaterial(config.addonKey);
   const cost = computeCost({ item, base, config });
 
@@ -304,7 +313,7 @@ export function computeDerived({ item, base, config }) {
     kind,
     aura: computeAura({ config, kind }),
     price: Math.max(0, Math.round(cost.total)),
-    unidentifiedPrice: Math.max(0, Math.round(base.price || 0)),
+    unidentifiedPrice: cost.priceless ? 0 : Math.max(0, Math.round(base.price || 0)),
     weight: Math.max(0, weight),
     hardness,
     hpBase: base.hpBase, // material hp effect deferred; enh/size applied by system
@@ -324,8 +333,15 @@ export function computeDerived({ item, base, config }) {
     derived.maxDex = base.maxDex == null
       ? null
       : base.maxDex + eff.maxDex + addonEff.maxDex;
-    derived.asf = Math.max(0, (base.asf || 0) + eff.asf + addonEff.asf);
+    // A material floor (Kanthaal's 5%) stops the reduction; it never raises a lower base.
+    const asfFloor = Math.min(base.asf || 0, traits.asfFloor ?? 0);
+    derived.asf = Math.max(asfFloor, (base.asf || 0) + eff.asf + addonEff.asf);
   }
+
+  // Material DR/– by the armor's actual category (not the lightened one). Never shields.
+  derived.armorDR = kind === 'armor'
+    ? (traits.armorDR?.[item?.system?.equipmentSubtype] ?? 0)
+    : 0;
 
   return derived;
 }

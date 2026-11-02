@@ -151,6 +151,12 @@ function costHtml(item, cfg, base) {
     ? `<div class="pf1me-warn"><i class="fas fa-triangle-exclamation"></i> ${esc(loc('PF1ME.Warn.OverEnh'))}</div>`
     : '';
   const deltaClass = c.delta > 0 ? 'up' : (c.delta < 0 ? 'down' : '');
+  // Priceless: the item is written at 0 gp, so only the enchanting cost is itemized.
+  const valueLines = c.priceless
+    ? `<div class="pf1me-priceless"><em>${esc(loc('PF1ME.Cost.Priceless'))}</em></div>`
+    : `<div><span>${esc(loc('PF1ME.Cost.BaseItem'))}</span><span>${gpStr(b.baseItem)}</span></div>
+        ${b.material ? `<div><span>${esc(loc('PF1ME.Cost.Material'))}</span><span>${gpStr(b.material)}</span></div>` : ''}
+        ${b.masterwork ? `<div><span>${esc(loc('PF1ME.Cost.Masterwork'))}</span><span>${gpStr(b.masterwork)}</span></div>` : ''}`;
   return `
     <div class="pf1me-cost">
       <div class="pf1me-cost-total">
@@ -159,9 +165,7 @@ function costHtml(item, cfg, base) {
         <span class="pf1me-delta ${deltaClass}">${gpDelta(c.delta)}</span>
       </div>
       <div class="pf1me-cost-breakdown">
-        <div><span>${esc(loc('PF1ME.Cost.BaseItem'))}</span><span>${gpStr(b.baseItem)}</span></div>
-        ${b.material ? `<div><span>${esc(loc('PF1ME.Cost.Material'))}</span><span>${gpStr(b.material)}</span></div>` : ''}
-        ${b.masterwork ? `<div><span>${esc(loc('PF1ME.Cost.Masterwork'))}</span><span>${gpStr(b.masterwork)}</span></div>` : ''}
+        ${valueLines}
         ${b.enhancement ? `<div><span>${esc(loc('PF1ME.Cost.Enhancement'))} (+${c.totalEquivalent})</span><span>${gpStr(b.enhancement)}</span></div>` : ''}
         ${auraRowHtml(item, cfg)}
       </div>

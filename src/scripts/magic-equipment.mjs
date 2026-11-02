@@ -2,17 +2,21 @@
 
 import { MODULE_ID, itemKind, catalogKinds } from './config.mjs';
 import { injectSection } from './sheet.mjs';
-import { getConfig, setConfig, setBaseItem, clearBaseItem, resolveBase, applyToItem } from './item-config.mjs';
+import {
+  getConfig, setConfig, setBaseItem, clearBaseItem, resolveBase, applyToItem, remapAppliedChangeIds,
+} from './item-config.mjs';
 import {
   onPreDamageRoll, onPreAttackRoll, onCreateActionUse, onPreDisplayActionUse,
-  patchActionUse, patchDamageDisplay, patchApplyDamage,
+  patchActionUse, patchDamageDisplay, patchApplyDamage, registerWrapper,
 } from './engine.mjs';
 import { registerHandler, getHandler, hasHandler } from './ability-handlers.mjs';
 // Side-effect import: registers the armor and shield ability handlers.
 import './armor-handlers.mjs';
+import { onAnimateUse, onAnimationDeleted, onAnimationEnded, onPreAnimateUse } from './animated.mjs';
 import { listAbilities, getAbility } from './data.mjs';
 import { registerSettings } from './settings.mjs';
 import { registerMaterials } from './materials.mjs';
+import { lightenArmorCategory } from './armor-category.mjs';
 import { bypassChoices } from './bypass.mjs';
 // registers the ckl-roll-bonuses.ready hook (no-op if absent); also exports the
 // script-facing roll-bonus helpers used by the API below.
@@ -25,6 +29,12 @@ import {
 Hooks.once('init', registerSettings);
 registerMaterials();
 
+// Lighter armor categories feed actor data prep, which runs before `setup`, so this one
+// wrapper goes in at `init`.
+Hooks.once('init', () => {
+  registerWrapper('pf1.documents.item.ItemEquipmentPF.prototype.applyEquippedEffects', lightenArmorCategory);
+});
+
 // UI
 Hooks.on('renderItemSheet', injectSection);
 
@@ -34,6 +44,12 @@ Hooks.on('pf1PreAttackRoll', onPreAttackRoll);
 Hooks.on('pf1CreateActionUse', onCreateActionUse);
 // Last hook before the card is created: snapshot the use's DR bypass onto it.
 Hooks.on('pf1PreDisplayActionUse', onPreDisplayActionUse);
+// Animated shields (§12.9): Animate is refused while animated or cooling down; using it starts
+// the buff; the buff ending starts the cooldown.
+Hooks.on('pf1PreActionUse', onPreAnimateUse);
+Hooks.on('pf1PostActionUse', onAnimateUse);
+Hooks.on('updateItem', onAnimationEnded);
+Hooks.on('deleteItem', onAnimationDeleted);
 // Transient roll-bonuses grants are released in a `finally` around ActionUse.process
 // (see engine.patchActionUse) — not here, because pf1PostActionUse never fires when
 // the attack dialog is cancelled.
@@ -43,6 +59,8 @@ Hooks.once('setup', () => {
   patchActionUse();
   patchDamageDisplay();
   patchApplyDamage();
+  // Keep the applied Change ids valid when a configured item is added to an actor.
+  registerWrapper('pf1.documents.item.ItemPF.prototype._preCreate', remapAppliedChangeIds);
 });
 
 Hooks.once('ready', () => {

@@ -7,10 +7,10 @@
 // dependency) as additive WRAPPERs, so we coexist with other modules that wrap the
 // same methods — notably ckl-roll-bonuses, which OVERRIDEs `handleConditionals`.
 
-import { MODULE_ID, isSupported } from './config.mjs';
+import { MODULE_ID, isSupported, itemKind } from './config.mjs';
 import { getAppliedAbilities } from './item-config.mjs';
 import { getHandler } from './ability-handlers.mjs';
-import { getAbility } from './data.mjs';
+import { getAbility, getMaterial, materialTraits } from './data.mjs';
 import { getSingleTargetActor } from './conditions.mjs';
 import {
   collectBypass, hasBypass, writeSnapshot, bypassFootnotes, clearBypassGrants,
@@ -174,6 +174,32 @@ function baseDamageTypes(action) {
   return out.size ? [...out] : ['untyped'];
 }
 
+/** Action types that get PF1's masterwork bonus, and so a material's enhancement bonus. */
+const WEAPON_ACTION_TYPES = new Set(['mwak', 'rwak', 'twak', 'mcman', 'rcman']);
+
+/** A weapon material's own enhancement bonus (Kanthaal's +1), or 0. */
+function intrinsicEnh(action) {
+  if (itemKind(action?.item) !== 'weapon' || !WEAPON_ACTION_TYPES.has(action.actionType)) return 0;
+  return materialTraits(action.normalMaterial).intrinsicEnh ?? 0;
+}
+
+/**
+ * That bonus as an `enh` Change for the roll's change list, so PF1's stacking lets
+ * masterwork or any magic enhancement overlap it. It never touches `system.enh`, so the
+ * weapon doesn't count as magic.
+ * @param {object} action
+ * @param {'attack'|'damage'} target
+ */
+function intrinsicEnhChange(action, target) {
+  const value = intrinsicEnh(action);
+  const Change = globalThis.pf1?.components?.ItemChange;
+  if (!value || !Change) return null;
+  const mat = getMaterial(action.normalMaterial);
+  return new Change({
+    formula: String(value), operator: 'add', target, type: 'enh', value, flavor: mat?.name ?? '',
+  });
+}
+
 /**
  * `pf1PreDamageRoll(action, rollData, parts, changes)` — parts are
  * `{ base, extra[], damageType, type }`. On a critical hit PF1 rolls damage twice
@@ -182,9 +208,13 @@ function baseDamageTypes(action) {
  * Energy (nonCrit) damage is therefore added on the normal roll only, so it lands
  * exactly once and is not multiplied.
  */
-export function onPreDamageRoll(action, rollData, parts) {
+export function onPreDamageRoll(action, rollData, parts, changes) {
   const item = action?.item;
   if (!isSupported(item) || !Array.isArray(parts)) return;
+
+  // Added on every firing, like PF1's own enhancement bonus, so it's multiplied on a crit.
+  const enhChange = action.isHealing ? null : intrinsicEnhChange(action, 'damage');
+  if (enhChange && Array.isArray(changes)) changes.push(enhChange);
 
   const applied = activeAbilities(item, action);
   if (!applied.length) return;
@@ -258,9 +288,12 @@ export function onPreDamageRoll(action, rollData, parts) {
  * attack bonuses (formula strings like "2[Bane]") and crit-range changes from applied
  * abilities. `rollOptions.critical` is the threat-range low bound.
  */
-export function onPreAttackRoll(action, config, rollData, rollOptions, parts) {
+export function onPreAttackRoll(action, config, rollData, rollOptions, parts, changes) {
   const item = action?.item;
   if (!isSupported(item)) return;
+
+  const enhChange = intrinsicEnhChange(action, 'attack');
+  if (enhChange && Array.isArray(changes)) changes.push(enhChange);
 
   const applied = activeAbilities(item, action);
   if (!applied.length) return;
@@ -432,14 +465,23 @@ async function injectGrantedEffectNotes(chatAttack) {
 function displayDamageFormulas(action) {
   const item = action?.item;
   if (!isSupported(item)) return [];
+  const out = [];
+
+  // The material's enhancement bonus, less whatever enhancement the column already has.
+  const own = intrinsicEnh(action);
+  if (own) {
+    const enhSources = (action.damageSources ?? []).filter((c) => c.type === 'enh').map((c) => c.value || 0);
+    const existing = Math.max(0, action.enhancementBonus || 0, ...enhSources);
+    if (own > existing) out.push(String(own - existing));
+  }
+
   const applied = getAppliedAbilities(item);
-  if (!applied.length) return [];
+  if (!applied.length) return out;
 
   const base = {
     item, action, actor: item.actor, rollData: {}, isCrit: false,
     target: null, isConditionalEnabled: () => false,
   };
-  const out = [];
   for (const { key, params } of applied) {
     const handler = getHandler(key);
     if (!handler?.damage) continue;
@@ -551,7 +593,7 @@ export function patchActionUse() {
 }
 
 /** Register an additive libWrapper WRAPPER, logging (not throwing) on failure. */
-function registerWrapper(path, fn) {
+export function registerWrapper(path, fn) {
   const lw = globalThis.libWrapper;
   if (!lw?.register) {
     console.error(`pf1-magic-equipment | libWrapper not available; "${path}" wrapper not installed.`);
