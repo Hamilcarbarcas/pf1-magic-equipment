@@ -3,6 +3,8 @@
 ## Unreleased
 
 ### Added
+- **Seeking weapons** set an `ignoreMissChance` boolean flag on Apply, which PF1 Cover and Sight reads to skip
+  the concealment miss chance on ranged attacks. Re-apply existing seeking weapons to add it.
 - **Wild armor and shields stay equipped through a shapechange.** Apply now sets the item's `wild` boolean flag,
   which astora-mod's polymorph forms leave on instead of melding. Re-apply existing wild armor and shields to add it.
 - **Animated shields** get an **Animate** action (move action) on Apply. Using it puts

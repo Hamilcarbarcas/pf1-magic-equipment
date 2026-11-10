@@ -229,6 +229,9 @@ const Wounding = {
 // (e.g. counting the extra attack of opportunity).
 const Fortuitous = { key: 'Fortuitous', booleanFlag: 'fortuitous' };
 
+// Seeking: negates miss chances; the boolean flag is read by pf1-cover-and-sight's miss chance.
+const Seeking = { key: 'Seeking', booleanFlag: 'ignoreMissChance' };
+
 // Speed: grants an extra attack — auto-enable the system's haste attack option.
 const Speed = { key: 'Speed', useOption: 'haste' };
 
@@ -314,6 +317,7 @@ const BUILTINS = [
   Bewildering,
   Wounding,
   Fortuitous,
+  Seeking,
   Speed,
   Brawling,
   Courageous,
