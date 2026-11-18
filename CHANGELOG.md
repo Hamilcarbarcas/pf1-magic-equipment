@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### Added
+- **The base item fills itself in.** A weapon, armor or shield imported from a compendium, with no
+  enhancement bonus, caster level, masterwork or special material, now links the compendium item it
+  came from as its base when you open its sheet. Drop another item to replace it, or clear it.
 - **Seeking weapons** set an `ignoreMissChance` boolean flag on Apply, which PF1 Cover and Sight reads to skip
   the concealment miss chance on ranged attacks. Re-apply existing seeking weapons to add it.
 - **Wild armor and shields stay equipped through a shapechange.** Apply now sets the item's `wild` boolean flag,

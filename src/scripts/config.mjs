@@ -35,6 +35,9 @@ export function defaultConfig() {
   return {
     /** @type {string} UUID of the linked base (unmodified) item. */
     baseUuid: '',
+    /** @type {boolean} the GM cleared the base, so the item's compendium source is
+     *  no longer linked automatically (see item-config autoLinkBase). */
+    noAutoBase: false,
     /** @type {number} base enhancement bonus, 0–5. */
     enh: 0,
     /** @type {{ kind: string, key: string, category: string, params: object }[]}

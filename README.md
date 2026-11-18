@@ -19,6 +19,9 @@ Equipment** section (right where the enhancement bonus lives) that lets you:
 - **Link a base item** — drag an unmodified version of the item from a compendium
   onto the section. This is the pristine baseline everything is recomputed from, so
   applying repeatedly never compounds prices or weights.
+  A plain item imported from a compendium (no enhancement bonus, caster level,
+  masterwork or special material) links the compendium item it came from
+  automatically; drop another item to replace it, or clear it.
 - **Set the enhancement bonus** (+1 … +5).
 - **Add special abilities** — a `+` button adds a row; each row narrows by category
   (+1…+5, Fixed cost, or All) and then picks the ability. Add as many as you like.

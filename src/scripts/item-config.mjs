@@ -57,6 +57,57 @@ export function getBaseCache(item) {
 }
 
 /**
+ * The compendium item this one was imported from, if any. Foundry stamps
+ * `_stats.compendiumSource` on import and on a drop from a compendium, and it rides
+ * along when the item is copied between actors. `flags.core.sourceId` is the pre-v12
+ * spelling, read raw to skip its deprecation warning.
+ */
+export function compendiumSourceOf(item) {
+  return item?._stats?.compendiumSource || item?._source?.flags?.core?.sourceId || null;
+}
+
+/**
+ * Whether the item should get its compendium source linked as the base: nothing
+ * linked or cached, never applied, the GM hasn't cleared the base, and the item reads
+ * as mundane. An enhancement bonus or caster level means it's already magic;
+ * masterwork or a special material means its price carries a surcharge Apply would
+ * add again on top of the source's.
+ */
+function autoBaseEligible(item, cfg) {
+  if (item?.pack || cfg.baseUuid || cfg.noAutoBase || getBaseCache(item)) return false;
+  if (item?.getFlag(MODULE_ID, FLAGS.applied)) return false;
+  const sys = item?.system ?? {};
+  const isWeapon = itemKind(item) === 'weapon';
+  const enh = isWeapon ? sys.enh : sys.armor?.enh;
+  const material = isWeapon ? sys.material : (sys.armor?.material ?? sys.material);
+  if ((Number(enh) || 0) > 0 || (Number(sys.cl) || 0) > 0) return false;
+  if (sys.masterwork || material?.normal?.value || material?.addon?.length) return false;
+  return true;
+}
+
+/** Items already tried this session, so an unresolvable source isn't refetched every render. */
+const autoLinkTried = new Set();
+
+/**
+ * Link the item's compendium source as its base, if it qualifies (see
+ * autoBaseEligible) and the source resolves to an item of the same kind. One update,
+ * so one re-render. Returns true when it linked.
+ */
+export async function autoLinkBase(item) {
+  if (!autoBaseEligible(item, getConfig(item))) return false;
+  const uuid = compendiumSourceOf(item);
+  if (!uuid || autoLinkTried.has(item.uuid)) return false;
+  autoLinkTried.add(item.uuid);
+  const doc = await fromUuid(uuid).catch(() => null);
+  if (!(doc instanceof Item) || itemKind(doc) !== itemKind(item)) return false;
+  await item.update({
+    [`flags.${MODULE_ID}.${FLAGS.config}.baseUuid`]: uuid,
+    [`flags.${MODULE_ID}.${FLAGS.baseCache}`]: extractBaseStats(doc),
+  });
+  return true;
+}
+
+/**
  * The abilities that were live as of the last Apply (read by the engine), each as
  * `{ key, params }`. Tolerates the older string-only snapshot format.
  */
@@ -85,9 +136,12 @@ export async function setBaseItem(item, uuid) {
   return stats.name;
 }
 
-/** Remove the base link and its cache. */
+/**
+ * Remove the base link and its cache. `noAutoBase` stops the compendium source being
+ * linked again, so a cleared base stays cleared.
+ */
 export async function clearBaseItem(item) {
-  await setConfig(item, { baseUuid: '' });
+  await setConfig(item, { baseUuid: '', noAutoBase: true });
   await item.unsetFlag(MODULE_ID, FLAGS.baseCache);
 }
 

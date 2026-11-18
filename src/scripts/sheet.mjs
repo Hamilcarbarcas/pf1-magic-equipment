@@ -4,7 +4,7 @@
 
 import { MODULE_ID, isSupported, loc, MAX_ENH_EQUIVALENT, itemKind, catalogKinds } from './config.mjs';
 import { getMaterial, materialsForItem, addonMaterialsForItem } from './data.mjs';
-import { getConfig, setConfig, setBaseItem, clearBaseItem, getBaseCache, applyToItem } from './item-config.mjs';
+import { getConfig, setConfig, setBaseItem, clearBaseItem, getBaseCache, applyToItem, autoLinkBase } from './item-config.mjs';
 import { computeCost, computeAura } from './calc.mjs';
 import { abilityPickerHtml, wireAbilityPicker } from './ability-picker.mjs';
 
@@ -35,6 +35,12 @@ export function injectSection(app, html) {
   const section = buildSection(item, editable);
   anchor.after(section);
   wireEvents(section, item, app, editable);
+
+  // Fill an empty base slot from the compendium item this one was imported from. The
+  // update re-renders the sheet with the link shown.
+  if (editable) {
+    autoLinkBase(item).catch((err) => console.error(`${MODULE_ID} | auto-linking the base item failed`, err));
+  }
 }
 
 /** Build the section element from the current config. */
