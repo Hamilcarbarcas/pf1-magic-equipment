@@ -193,6 +193,9 @@
   DR Bypass bonus.
 
 ### Fixed
+- **Animate works without Advanced Templates.** The Animate action is recognized by a flag on the action,
+  and PF1's actions only kept flags while Advanced Templates (or astora-mod) added a field for them. The
+  module now adds that field itself.
 - Armor and shields now store their special material where PF1 keeps it, so the
   system's own material dropdown shows it. Re-apply existing armor to move it.
 - An item configured in the sidebar or a compendium and then added to an actor no longer

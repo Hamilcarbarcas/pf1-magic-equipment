@@ -12,6 +12,7 @@ import {
 import { registerHandler, getHandler, hasHandler } from './ability-handlers.mjs';
 // Side-effect import: registers the armor and shield ability handlers.
 import './armor-handlers.mjs';
+import './action-flags.mjs';
 import { onAnimateUse, onAnimationDeleted, onAnimationEnded, onPreAnimateUse } from './animated.mjs';
 import { listAbilities, getAbility } from './data.mjs';
 import { registerSettings } from './settings.mjs';
